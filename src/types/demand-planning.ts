@@ -132,6 +132,15 @@ export interface DemandRow {
   total_avg_curr_min?: number | null;
   /** True when total_avg_curr shows the minimum because the calculated value was below it (and no manual override is set). */
   total_avg_curr_min_applied?: boolean;
+  /**
+   * Target inventory life (days) from the Replacing Soon page, or null when the
+   * SKU is not registered. The auto-fill calculations use it instead of the
+   * sales-range / gradient target, so a SKU about to be replaced is not overstocked.
+   */
+  replacing_soon_days?: number | null;
+  /** Successor SKU noted on the Replacing Soon page (informational). */
+  replacing_soon_replacement_sku?: string | null;
+  replacing_soon_note?: string | null;
   oos_days_90d: number | null;
   oos_lost_demand_90d: number | null;
   cbm_per_unit?: number;

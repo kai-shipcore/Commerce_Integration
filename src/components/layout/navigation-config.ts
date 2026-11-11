@@ -22,6 +22,7 @@ import {
   Warehouse,
   Container,
   ArrowUpToLine,
+  Replace,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PermSection, RolePermMatrix } from "@/lib/permissions-config";
@@ -199,6 +200,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "replacing-soon",
+    name: "Replacing Soon",
+    href: "/planning/replacing-soon",
+    icon: Replace,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "purchase-orders",
     name: "Purchase Orders",
     href: "/planning/purchase-orders",
@@ -323,6 +332,7 @@ export const userDefaultVisibleMenuIds = [
   "available-stock",
   "transit-stock",
   "min-sales",
+  "replacing-soon",
   "inventory",
   "orders",
 ];
@@ -337,6 +347,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "available-stock":     ["available-stock"],
   "transit-stock":       ["transit-stock"],
   "min-sales":           ["min-sales"],
+  "replacing-soon":      ["replacing-soon"],
   "sku-master":          ["sku-master"],
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],

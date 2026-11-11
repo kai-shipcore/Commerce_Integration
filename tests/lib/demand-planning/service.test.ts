@@ -234,6 +234,20 @@ describe("DemandPlanningService.getDashboardData", () => {
       });
     });
 
+    it("passes the Replacing Soon registration through, and null when not registered", async () => {
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({
+        replacing_soon_days: 30, replacing_soon_replacement_sku: "SKU-NEW", replacing_soon_note: "fabric change",
+      })]);
+      const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+      expect(data.rows[0]).toMatchObject({
+        replacing_soon_days: 30, replacing_soon_replacement_sku: "SKU-NEW", replacing_soon_note: "fabric change",
+      });
+
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({})]);
+      const { data: plain } = await DemandPlanningService.getDashboardData(baseQuery);
+      expect(plain.rows[0]).toMatchObject({ replacing_soon_days: null, replacing_soon_replacement_sku: null });
+    });
+
     it("keeps the calculated value when it is already above the minimum", async () => {
       repositoryMock.getStatsRows.mockResolvedValue([statsRow({ total_avg_curr_min: 0.2 })]);
       const { data } = await DemandPlanningService.getDashboardData(baseQuery);
@@ -322,7 +336,7 @@ describe("DemandPlanningService.getDashboardData — historical inventory", () =
   });
 
   beforeEach(() => {
-    repositoryMock.getStatsRows.mockResolvedValue([statsRow()]);
+    repositoryMock.getStatsRows.mockResolvedValue([statsRow({})]);
     repositoryMock.getInventoryHistoryCoverage.mockResolvedValue({ min_date: "2026-03-28", max_date: "2026-09-16" });
   });
 

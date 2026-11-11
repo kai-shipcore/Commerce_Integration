@@ -46,3 +46,17 @@ describe("calcOrderQty with velocity is unchanged", () => {
     expect(withBackorder).toBe(withoutBackorder + 25);
   });
 });
+
+describe("calcOrderQty with a fixed target (Replacing Soon)", () => {
+  it("uses the fixed target instead of baseTarget + tier bonus", () => {
+    const fixed = sku({ adj_daily: 2, fixed_target_days: 30, tier_bonus: 15, use_gap_days: false });
+    // 30 days x 2/day, whatever the base target the optimizer is trying.
+    expect(calcOrderQty(fixed, 60, 30)).toBe(60);
+    expect(calcOrderQty(fixed, 120, 30)).toBe(60);
+  });
+
+  it("falls back to baseTarget + tier bonus when no fixed target is set", () => {
+    const normal = sku({ adj_daily: 2, tier_bonus: 15, use_gap_days: false });
+    expect(calcOrderQty(normal, 60, 30)).toBe(150);
+  });
+});

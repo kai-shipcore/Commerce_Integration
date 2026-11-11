@@ -143,6 +143,21 @@ function rollupMark(row: DemandRow): string {
   return `<span class="rollup-mark" title="Sales and stock include ${sources.join(", ")}">+</span>`;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
+}
+
+// Registered on the Replacing Soon page: the auto-fill calculations stock this
+// SKU only up to the registered inventory life, so its order looks small.
+function replacingSoonMark(row: DemandRow): string {
+  const days = row.replacing_soon_days;
+  if (days == null) return "";
+  const lines = [`Replacing soon: auto orders up to ${days} days of inventory life`];
+  if (row.replacing_soon_replacement_sku) lines.push(`Replacement: ${row.replacing_soon_replacement_sku}`);
+  if (row.replacing_soon_note) lines.push(row.replacing_soon_note);
+  return `<span class="replacing-soon-mark" title="${escapeHtml(lines.join(" | "))}">${days}d</span>`;
+}
+
 export type CellContent =
   | string
   | number
@@ -191,7 +206,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "workflow_note_3", grp: "fix", label: "Note 3",      w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note_3 ?? "", sortVal: (r) => r.workflow_note_3 ?? "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
-  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}` }), sortVal: (r) => r.sku },
+  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
   { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
   { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },

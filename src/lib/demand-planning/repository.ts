@@ -276,11 +276,15 @@ export const DemandPlanningRepository = {
       p.total_avg_real_override::float8 AS total_avg_real_override,
       p.total_avg_curr_override::float8                    AS total_avg_curr_override,
       ms.min_total_avg_curr::float8                        AS total_avg_curr_min,
+      rs.target_inv_life_days                              AS replacing_soon_days,
+      rs.replacement_sku                                   AS replacing_soon_replacement_sku,
+      rs.note                                              AS replacing_soon_note,
       COALESCE(s.oos_days_90d,   0)::int                   AS oos_days_90d,
       s.oos_lost_demand_90d::float8                        AS oos_lost_demand_90d
     FROM ${statsSource} s
     LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
     LEFT JOIN shipcore.fc_sku_min_sales ms ON ms.master_sku = s.master_sku
+    LEFT JOIN shipcore.fc_sku_replacing_soon rs ON rs.master_sku = s.master_sku
     LEFT JOIN (
       SELECT
         ci.master_sku,

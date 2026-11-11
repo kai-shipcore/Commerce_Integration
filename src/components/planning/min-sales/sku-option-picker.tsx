@@ -14,17 +14,23 @@
  * registered, so the reader can see what they are about to change.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
-export type SkuOption = {
+/** Fields every picker endpoint returns. */
+export type BaseSkuOption = {
   masterSku: string;
   productName: string | null;
   calculatedTotalAvgCurr: number | null;
+};
+
+export type SkuOption = BaseSkuOption & {
   registeredMin: number | null;
 };
+
+const MIN_SALES_ENDPOINT = "/api/planning/sku-min-sales/sku-options";
 
 const PAGE_LIMIT = 50;
 const DEBOUNCE_MS = 200;
@@ -33,19 +39,34 @@ function formatAvg(value: number | null): string {
   return value === null ? "-" : value.toFixed(2);
 }
 
-export function SkuOptionPicker({
+/**
+ * Also used by the Replacing Soon page with its own `endpoint` (guarded by its
+ * own permission) and `renderRegistered` for what that page registers.
+ */
+export function SkuOptionPicker<T extends BaseSkuOption = SkuOption>({
   value,
   onChange,
   disabled,
+  endpoint = MIN_SALES_ENDPOINT,
+  renderRegistered,
 }: {
-  value: SkuOption | null;
-  onChange: (next: SkuOption | null) => void;
+  value: T | null;
+  onChange: (next: T | null) => void;
   disabled?: boolean;
+  endpoint?: string;
+  renderRegistered?: (option: T) => ReactNode;
 }) {
   const { pick } = useI18n();
+  const registeredBadge = (option: T): ReactNode => {
+    if (renderRegistered) return renderRegistered(option);
+    const registeredMin = (option as unknown as Partial<SkuOption>).registeredMin;
+    return registeredMin != null
+      ? <div className="font-semibold text-[#b45309]">{pick("등록됨", "Registered")} {formatAvg(registeredMin)}</div>
+      : null;
+  };
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [options, setOptions] = useState<SkuOption[]>([]);
+  const [options, setOptions] = useState<T[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -62,14 +83,14 @@ export function SkuOptionPicker({
     const timer = setTimeout(() => {
       setLoading(true);
       const params = new URLSearchParams({ search: search.trim(), limit: String(PAGE_LIMIT) });
-      fetch(apiPath(`/api/planning/sku-min-sales/sku-options?${params.toString()}`), {
+      fetch(apiPath(`${endpoint}?${params.toString()}`), {
         cache: "no-store",
         signal: controller.signal,
       })
         .then((res) => res.json())
         .then((json) => {
           if (!json.success) throw new Error(json.error ?? "request failed");
-          setOptions(json.data as SkuOption[]);
+          setOptions(json.data as T[]);
           setTotal(Number(json.total ?? 0));
           setFailed(false);
         })
@@ -85,7 +106,7 @@ export function SkuOptionPicker({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [open, search]);
+  }, [endpoint, open, search]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,7 +130,7 @@ export function SkuOptionPicker({
     setSearch("");
   }
 
-  function choose(option: SkuOption) {
+  function choose(option: T) {
     onChange(option);
     close();
   }
@@ -210,9 +231,7 @@ export function SkuOptionPicker({
                     </div>
                     <div className="shrink-0 text-right text-[11px] leading-tight">
                       <div className="font-mono text-muted-foreground">{pick("계산", "Calc")} {formatAvg(option.calculatedTotalAvgCurr)}</div>
-                      {option.registeredMin !== null ? (
-                        <div className="font-semibold text-[#b45309]">{pick("등록됨", "Registered")} {formatAvg(option.registeredMin)}</div>
-                      ) : null}
+                      {registeredBadge(option)}
                     </div>
                   </div>
                 );

@@ -992,6 +992,7 @@ td.t-cn-sod { background: #e5f3ff; }
 .bo-pos  { color: #c42020; font-weight: 600; }
 /* Marks a Master SKU whose sales include a discontinued SKU's (TN, BKGR). */
 .rollup-mark { margin-left: 4px; color: #7a4bd0; font-weight: 700; cursor: help; }
+.replacing-soon-mark { margin-left: 4px; padding: 0 4px; border: 1px solid #f5c97a; border-radius: 999px; background: #fff7e6; color: #b45309; font-size: 10px; font-weight: 700; line-height: 14px; cursor: help; }
 .inb-pos { color: #1a4fc0; font-weight: 600; }
 .sod-crit { color: #c42020; font-weight: 700; font-size: inherit; }
 .sod-warn { color: #9a5200; font-weight: 600; font-size: inherit; }

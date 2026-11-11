@@ -13,6 +13,7 @@ export type AuditEntityType =
   | "transit_record"
   | "available_stock"
   | "sku_min_sales"
+  | "sku_replacing_soon"
   | "integration"
   | "production_part"
   | "production_code"

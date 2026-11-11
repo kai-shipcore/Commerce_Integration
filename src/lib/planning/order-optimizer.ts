@@ -10,6 +10,11 @@ export type SkuOrderInput = {
   backorder_at_arrival: number; // chainMap[sku][prevContainer].backorder
   tier_bonus: number;           // pre-computed from appropriate gradient
   use_gap_days?: boolean;       // CC=true (default), SC=false
+  /**
+   * Replacing Soon SKUs: a fixed inventory-life target in days that replaces
+   * baseTarget + tier_bonus, so the optimizer's search does not grow it.
+   */
+  fixed_target_days?: number | null;
 };
 
 export function getTier(daily: number, gradient: GradientTier[]): GradientTier {
@@ -31,7 +36,7 @@ export function calcOrderQty(
   // back orders is never reordered, because being out of stock is exactly what
   // drove its recent sales to zero.
   if (adj_daily <= 0) return bo > 0 ? Math.ceil(Math.max(bo, moq) / step) * step : 0;
-  const target = baseTarget + sku.tier_bonus;
+  const target = sku.fixed_target_days != null ? sku.fixed_target_days : baseTarget + sku.tier_bonus;
   const useGap = sku.use_gap_days !== false;
 
   const availIfNoOrder = bo > 0 ? -bo : rem;

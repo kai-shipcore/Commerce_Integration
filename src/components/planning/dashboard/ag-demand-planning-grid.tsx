@@ -238,6 +238,8 @@ type TargetOrderPreview = {
   requiredSkuCount: number;
   requiredQty: number;
   requiredCbm: number;
+  /** Replacing Soon SKUs among the candidates: fixed at their own target days. */
+  replacingSoon: { skuCount: number; orderedSkuCount: number; qty: number; cbm: number };
 };
 
 type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
@@ -3359,6 +3361,22 @@ function CapacityModePanel({
           warning={overCapacity}
         />
       </div>
+      {preview.replacingSoon.skuCount > 0 ? (
+        <div className="rounded-md border border-[#f5c97a] bg-[#fff7e6] px-3 py-2 text-xs text-[#8a4b08]">
+          <strong>{pick("교체 예정 SKU", "Replacing soon SKUs")}</strong>
+          {" · "}
+          {pick(
+            `대상 ${preview.replacingSoon.skuCount.toLocaleString()} SKU 중 ${preview.replacingSoon.orderedSkuCount.toLocaleString()} SKU 발주 · 수량 ${preview.replacingSoon.qty.toLocaleString()} · ${preview.replacingSoon.cbm.toFixed(2)} CBM`,
+            `${preview.replacingSoon.orderedSkuCount.toLocaleString()} of ${preview.replacingSoon.skuCount.toLocaleString()} SKUs ordered · Qty ${preview.replacingSoon.qty.toLocaleString()} · ${preview.replacingSoon.cbm.toFixed(2)} CBM`,
+          )}
+          <div className="mt-0.5 text-[11px] text-[#a16207]">
+            {pick(
+              "Replacing Soon 페이지에 등록된 목표 INV Life(기본 30일)로 고정 계산되며, 아래 판매량 구간에는 포함되지 않습니다.",
+              "Fixed at the inventory life registered on the Replacing Soon page (30 days by default); not counted in the sales ranges.",
+            )}
+          </div>
+        </div>
+      ) : null}
       {showRequired && trimmedCbm > 0.005 ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
           {pick(
@@ -7035,6 +7053,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           backorder_at_arrival: prev?.backorder ?? 0,
           tier_bonus: tier.bonus,
           use_gap_days: !isSC,
+          fixed_target_days: row.replacing_soon_days ?? null,
         };
       });
 
@@ -7153,7 +7172,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const prevContainer = containers[containerIndex - 1];
     const capacityCbm = Number(container.cbm_cap) || 0;
     if (!prevContainer) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
     }
 
     const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
@@ -7166,9 +7185,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     let requiredSkuCount = 0;
     let requiredQty = 0;
     let requiredCbm = 0;
+    const replacingSoon = { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 };
+    for (const row of rows) if (row.replacing_soon_days != null) replacingSoon.skuCount += 1;
 
     for (const row of rows) {
-      const targetDays = resolveTargetDays(row);
+      // Replacing Soon SKUs are fixed at their registered inventory life,
+      // whatever the fixed target or sales-range target would give.
+      const targetDays = row.replacing_soon_days ?? resolveTargetDays(row);
       if (!Number.isFinite(targetDays) || targetDays <= 0) continue;
 
       const adjDaily = row.total_avg_curr * seasonFactor;
@@ -7202,6 +7225,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
       usedCbm += qty * cbmUnit;
       orders.push({ row, qty, cbmUnit });
+      if (row.replacing_soon_days != null) {
+        replacingSoon.orderedSkuCount += 1;
+        replacingSoon.qty += qty;
+        replacingSoon.cbm += qty * cbmUnit;
+      }
     }
 
     const totalQty = orders.reduce((sum, order) => sum + order.qty, 0);
@@ -7216,6 +7244,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       requiredSkuCount,
       requiredQty,
       requiredCbm,
+      replacingSoon,
     };
   }, [chainMap, containers, seasonalFactors, targetCandidateRows]);
 
@@ -7269,7 +7298,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const fixedTargetPreview = useMemo<TargetOrderPreview>(() => {
     if (!fixedTargetDialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
     }
     return calculateTargetOrders(
       fixedTargetDialog.container,
@@ -7281,7 +7310,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const backfill3Preview = useMemo<TargetOrderPreview>(() => {
     if (!backfill3Dialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
     }
     return calculateTargetOrders(
       backfill3Dialog.container,
@@ -7314,7 +7343,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const group = targetTierGroupForRow(row);
       const tiers = backfill3Tiers[group];
       const entry = result[group] ??= { total: emptyBreakdownCell(), tiers: tiers.map(emptyBreakdownCell) };
-      const tierIndex = tierIndexForAverage(row.total_avg_curr ?? 0, tiers);
+      // Replacing Soon SKUs ignore the sales ranges, so they count toward the
+      // group total but not toward any range.
+      const tierIndex = row.replacing_soon_days != null ? -1 : tierIndexForAverage(row.total_avg_curr ?? 0, tiers);
       return { entry, tierCell: tierIndex >= 0 ? entry.tiers[tierIndex] : null };
     };
     for (const row of targetCandidateRows()) {

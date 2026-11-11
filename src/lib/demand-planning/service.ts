@@ -696,6 +696,11 @@ export const DemandPlanningService = {
         total_avg_curr_override,
         total_avg_curr_min,
         total_avg_curr_min_applied,
+        // Replacing Soon page: the auto-fill calculations cap this SKU at the
+        // registered inventory life. Null when the SKU is not registered.
+        replacing_soon_days: r.replacing_soon_days == null ? null : Number(r.replacing_soon_days),
+        replacing_soon_replacement_sku: (r.replacing_soon_replacement_sku as string | null) ?? null,
+        replacing_soon_note: (r.replacing_soon_note as string | null) ?? null,
         total_avg_prev_override,
         total_avg_real_override,
         total_avg_prev_auto: isCarCover ? total_avg_prev_auto : Math.round(total_avg_prev_auto * 100) / 100,
