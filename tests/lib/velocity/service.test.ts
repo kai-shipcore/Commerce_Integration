@@ -29,6 +29,10 @@ const repositoryMock = {
   upsertLinkSnapshot: vi.fn(),
   upsertCustomSnapshot: vi.fn(),
   deleteStaleSnapshots: vi.fn(),
+  fetchFbaWebSkuRowsFromLookup: vi.fn(),
+  upsertFbaWebSkuSnapshot: vi.fn(),
+  deleteStaleFbaWebSkuSnapshot: vi.fn(),
+  queryFbaWebSkuByRanges: vi.fn(),
 };
 
 const cacheManagerMock = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
@@ -168,6 +172,36 @@ describe("VelocityService.getSnapshotData", () => {
   });
 });
 
+describe("VelocityService.getFbaWebSkuData", () => {
+  const base = { items: ["Seat Cover"], mode: "sales", rangesCsv: "2026-01-01:2026-01-31", combined: false };
+
+  it("drops non-FBA channels and returns nothing when no FBA channel is left", async () => {
+    const result = await VelocityService.getFbaWebSkuData({ ...base, channels: ["Walmart", "Amazon FBM"] });
+    expect(result).toEqual({ link: [], custom: [] });
+    expect(repositoryMock.queryFbaWebSkuByRanges).not.toHaveBeenCalled();
+  });
+
+  it("reads link and custom (Seat Cover) with the sales order types, FBA channels only", async () => {
+    repositoryMock.queryFbaWebSkuByRanges.mockResolvedValue([{ web_sku: "AF-1", master_sku: "CA-SC-1", qty_0: 5 }]);
+    const result = await VelocityService.getFbaWebSkuData({
+      ...base, channels: ["Walmart", "Amazon FBA USA", "Amazon FBA Canada"],
+    });
+    const calls = repositoryMock.queryFbaWebSkuByRanges.mock.calls.map((c) => c[0]);
+    expect(calls.map((c) => c.source)).toEqual(["link", "custom"]);
+    expect(calls[0].channels).toEqual(["Amazon FBA USA", "Amazon FBA Canada"]);
+    expect(calls[0].orderTypes).toEqual(["sales", "preorder"]);
+    expect(result.link).toEqual([{ webSku: "AF-1", masterSku: "CA-SC-1", qtys: [5] }]);
+  });
+
+  it("preorder mode reads preorder, ttm_preorder and custom separately", async () => {
+    repositoryMock.queryFbaWebSkuByRanges.mockResolvedValue([]);
+    const result = await VelocityService.getFbaWebSkuData({ ...base, mode: "preorder", channels: ["Amazon FBA USA"] });
+    const types = repositoryMock.queryFbaWebSkuByRanges.mock.calls.map((c) => [c[0].source, c[0].orderTypes]);
+    expect(types).toEqual([["link", ["preorder"]], ["link", ["ttm_preorder"]], ["custom", ["preorder"]]]);
+    expect(result).toEqual({ link: [], custom: [], ttm: [] });
+  });
+});
+
 describe("VelocityService enrichment caching", () => {
   it("getCustomEnrich returns the cached value on a hit", async () => {
     const cached = { data: {}, customTotals: {} };
@@ -217,6 +251,9 @@ describe("VelocityService.runSync", () => {
     repositoryMock.upsertLinkSnapshot.mockResolvedValue(0);
     repositoryMock.upsertCustomSnapshot.mockResolvedValue(0);
     repositoryMock.deleteStaleSnapshots.mockResolvedValue({ linkDeleted: 0, customDeleted: 0 });
+    repositoryMock.fetchFbaWebSkuRowsFromLookup.mockResolvedValue([]);
+    repositoryMock.upsertFbaWebSkuSnapshot.mockResolvedValue(0);
+    repositoryMock.deleteStaleFbaWebSkuSnapshot.mockResolvedValue(0);
 
     const result = await VelocityService.runSync(false);
 
@@ -232,8 +269,19 @@ describe("VelocityService.runSync", () => {
     repositoryMock.upsertLinkSnapshot.mockResolvedValue(1);
     repositoryMock.upsertCustomSnapshot.mockResolvedValue(1);
     repositoryMock.deleteStaleSnapshots.mockResolvedValue({ linkDeleted: 2, customDeleted: 3 });
+    const webRows = [{ web_sku: "AF-1", master_sku: "A" }];
+    repositoryMock.fetchFbaWebSkuRowsFromLookup.mockResolvedValue(webRows);
+    repositoryMock.upsertFbaWebSkuSnapshot.mockResolvedValue(1);
+    repositoryMock.deleteStaleFbaWebSkuSnapshot.mockResolvedValue(0);
 
     const result = await VelocityService.runSync(true);
+
+    // The FBA web-SKU snapshot is refreshed in the same run, from both views, with the same window.
+    expect(repositoryMock.fetchFbaWebSkuRowsFromLookup).toHaveBeenCalledWith(expect.anything(), "link", "");
+    expect(repositoryMock.fetchFbaWebSkuRowsFromLookup).toHaveBeenCalledWith(expect.anything(), "custom", "");
+    expect(repositoryMock.upsertFbaWebSkuSnapshot).toHaveBeenCalledWith(webRows, "link", expect.any(Date));
+    expect(repositoryMock.upsertFbaWebSkuSnapshot).toHaveBeenCalledWith(webRows, "custom", expect.any(Date));
+    expect(repositoryMock.deleteStaleFbaWebSkuSnapshot).toHaveBeenCalledWith(expect.any(Date), true);
 
     expect(result).toEqual({ linkUpserted: 1, customUpserted: 1, linkDeleted: 2, customDeleted: 3 });
     expect(cacheManagerMock.delete).toHaveBeenCalledWith("oos-preorder:sku-list:v4");

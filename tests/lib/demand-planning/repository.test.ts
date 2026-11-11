@@ -1,3 +1,4 @@
+import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const primaryQueryMock = vi.fn();
@@ -178,8 +179,8 @@ describe("DemandPlanningRepository.getVelocitySnapshot", () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getVelocitySnapshot("link", "2026-01-01");
     const [sql] = primaryQueryMock.mock.calls[0];
-    expect(sql).toContain("order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA'");
-    expect(sql).toContain("channel='Amazon FBA' AND order_type IN ('sales','preorder')");
+    expect(sql).toContain(`order_type IN ('sales', 'preorder') AND channel NOT IN (${FBA_CHANNELS_SQL})`);
+    expect(sql).toContain(`channel IN (${FBA_CHANNELS_SQL}) AND order_type IN ('sales','preorder')`);
     expect(sql).not.toMatch(/order_type ?= ?'sales'/);
     expect(sql).toContain("order_type IN ('ttm', 'ttm_preorder') AND order_date");
     expect(sql).not.toMatch(/order_type ?= ?'ttm' /);
@@ -263,8 +264,8 @@ describe("DemandPlanningRepository.getSalesVelocity", () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getSalesVelocity("custom", "2026-03-01");
     const [sql] = primaryQueryMock.mock.calls[0];
-    expect(sql).toContain("channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder')");
-    expect(sql).toContain("order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA'");
+    expect(sql).toContain(`channel IN (${FBA_CHANNELS_SQL}) AND order_type IN ('sales', 'preorder')`);
+    expect(sql).toContain(`order_type IN ('sales', 'preorder') AND channel NOT IN (${FBA_CHANNELS_SQL})`);
     expect(sql).not.toContain("order_type = 'sales'");
     expect(sql).toContain("order_type = 'preorder'");
     expect(sql).toContain("order_type IN ('ttm', 'ttm_preorder') AND order_date");
@@ -279,7 +280,7 @@ describe("DemandPlanningRepository.getSalesVelocity", () => {
     expect(avgSql).not.toContain("order_type = 'ttm_preorder'");
     expect(sql).toContain("/ 90 * 0.15");
     expect(sql).toContain("/ 60 * 0.20");
-    expect(sql).not.toContain("channel = 'Amazon FBA' AND order_date");
+    expect(sql).not.toContain(`channel IN (${FBA_CHANNELS_SQL}) AND order_date`);
   });
 });
 

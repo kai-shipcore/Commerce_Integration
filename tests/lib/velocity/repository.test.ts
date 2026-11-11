@@ -246,3 +246,69 @@ describe("VelocityRepository sync helpers", () => {
     expect(linkSql).toContain("order_date >= NOW() - INTERVAL '120 days'");
   });
 });
+
+describe("VelocityRepository snapshot channel split (Amazon FBA USA / Canada)", () => {
+  it.each([
+    ["link", (pool: never) => VelocityRepository.fetchLinkRowsFromLookup(pool, "")],
+    ["custom", (pool: never) => VelocityRepository.fetchCustomRowsFromLookup(pool, "")],
+  ])("labels FBA orders shipped to CA as Canada and the rest as USA (%s)", async (_label, fetch) => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    await fetch({ query } as never);
+    const [sql] = query.mock.calls[0] as [string];
+    expect(sql).toContain("THEN 'Amazon FBM'");
+    expect(sql).toContain("ca.order_number IS NOT NULL THEN 'Amazon FBA Canada'");
+    expect(sql).toMatch(/SELECT DISTINCT order_number\s+FROM ecommerce_data\.sales_orders\s+WHERE platform_source::text = 'AMAZON' AND shipping_country = 'CA'/);
+    expect(sql).toContain("THEN 'Amazon FBA USA'");
+    expect(sql).not.toContain("THEN 'Amazon FBA'\n");
+    // Only the DISTINCT subquery may join sales_orders: order_number has duplicates that would double-count.
+    expect(sql).not.toMatch(/JOIN ecommerce_data\.sales_orders/);
+    // FBM must be decided before the Canada check, so CA merchant orders stay FBM.
+    expect(sql.indexOf("'Amazon FBM'")).toBeLessThan(sql.indexOf("'Amazon FBA Canada'"));
+    expect(sql).toContain("GROUP BY 1, 2, 3, 4, 5, 7");
+  });
+});
+
+describe("VelocityRepository FBA web-SKU snapshot", () => {
+  it.each(["link", "custom"] as const)("pulls only FBA rows keyed by order_sku from the %s view", async (source) => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    await VelocityRepository.fetchFbaWebSkuRowsFromLookup({ query } as never, source, "");
+    const [sql] = query.mock.calls[0] as [string];
+    const a = source === "link" ? "l" : "c";
+    expect(sql).toContain(`FROM ecommerce_data.vw_sales_order_items_${source}_new ${a}`);
+    expect(sql).toContain(`${a}.order_sku           AS web_sku`);
+    expect(sql).toContain(`${a}.platform_source::text = 'AMAZON'`);
+    expect(sql).toContain(`${a}.fulfillment_channel::text IS DISTINCT FROM 'Merchant'`);
+    // Same channel labels as the master-SKU snapshots.
+    expect(sql).toContain("THEN 'Amazon FBA Canada'");
+    expect(sql).toContain("THEN 'Amazon FBA USA'");
+    expect(sql).not.toMatch(/JOIN ecommerce_data\.sales_orders/);
+    // Positional: every select column except the SUM (7th).
+    expect(sql.trimEnd().endsWith("GROUP BY 1, 2, 3, 4, 5, 6")).toBe(true);
+  });
+
+  it("upserts with the source on every row", async () => {
+    primaryQueryMock.mockResolvedValue({ rowCount: 1 });
+    const n = await VelocityRepository.upsertFbaWebSkuSnapshot([{
+      order_date: new Date("2026-01-01"), channel: "Amazon FBA USA", item_category: "Car Cover",
+      order_type: "sales", web_sku: "AF-1", master_sku: "CC-1", qty: 3,
+    }], "custom", new Date("2026-01-02"));
+    expect(n).toBe(1);
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("ON CONFLICT (source, order_date, item_category, channel, order_type, web_sku, master_sku)");
+    expect(params[0]).toBe("custom");
+    expect(params[5]).toEqual(["AF-1"]);
+  });
+
+  it("reads range sums per web SKU and master SKU", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await VelocityRepository.queryFbaWebSkuByRanges({
+      source: "link", items: ["Car Cover"], channels: ["Amazon FBA USA"], orderTypes: ["sales", "preorder"],
+      ranges: [{ from: "2026-01-01", to: "2026-01-31" }],
+    });
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("FROM shipcore.fc_velocity_fba_web_sku_snapshot");
+    expect(sql).toContain("GROUP BY web_sku, master_sku");
+    expect(params).toEqual(["link", ["Car Cover"], ["Amazon FBA USA"], ["sales", "preorder"]]);
+  });
+});
+

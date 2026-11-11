@@ -857,6 +857,26 @@ model VelocityCustomSnapshot {
   @@schema("shipcore")
 }
 
+/// Amazon FBA sales per web SKU (order_sku) for the Velocity page's Web SKU view.
+/// source = 'link' | 'custom' (which lookup view the row came from).
+model VelocityFbaWebSkuSnapshot {
+  id           Int      @id @default(autoincrement())
+  syncedAt     DateTime @default(now()) @map("synced_at") @db.Timestamptz(6)
+  source       String
+  orderDate    DateTime @map("order_date") @db.Date
+  itemCategory String   @map("item_category")
+  channel      String
+  orderType    String   @map("order_type")
+  webSku       String   @map("web_sku")
+  masterSku    String   @map("master_sku")
+  qty          Int      @default(0)
+
+  @@unique([source, orderDate, itemCategory, channel, orderType, webSku, masterSku], map: "fc_vfws_unique")
+  @@index([source, itemCategory, channel, orderType, orderDate], map: "idx_vfws_main")
+  @@map("fc_velocity_fba_web_sku_snapshot")
+  @@schema("shipcore")
+}
+
 // ============================================
 // SEAT COVER SIZES
 // ============================================

@@ -1,3 +1,4 @@
+import { FBA_CANADA_CHANNEL, FBA_USA_CHANNEL } from "@/lib/velocity/channels";
 import type { Pool, PoolClient } from "pg";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { getPrimaryPool } from "@/lib/db/primary-db";
@@ -989,6 +990,31 @@ export const VelocityRepository = {
     return result.rows;
   },
 
+  /** Web SKU view: per (web_sku, master_sku) range sums from the FBA web-SKU snapshot. */
+  async queryFbaWebSkuByRanges(opts: {
+    source: "link" | "custom";
+    items: string[];
+    channels: string[];
+    orderTypes: string[];
+    ranges: { from: string; to: string }[];
+  }): Promise<Array<{ web_sku: string; master_sku: string } & Record<string, unknown>>> {
+    const cols = opts.ranges
+      .map(
+        ({ from, to }, i) =>
+          `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN qty ELSE 0 END)::int AS qty_${i}`
+      )
+      .join(", ");
+    const result = await getPrimaryPool().query(
+      `SELECT web_sku, master_sku, ${cols}
+       FROM shipcore.fc_velocity_fba_web_sku_snapshot
+       WHERE source = $1 AND item_category = ANY($2) AND channel = ANY($3) AND order_type = ANY($4)
+       GROUP BY web_sku, master_sku
+       ORDER BY qty_0 DESC, web_sku`,
+      [opts.source, opts.items, opts.channels, opts.orderTypes]
+    );
+    return result.rows;
+  },
+
   // ─── Sync (POST /api/velocity/sync) ───────────────────────────────────────
 
   async getLastSyncedAt(): Promise<Date | null> {
@@ -1128,6 +1154,68 @@ export const VelocityRepository = {
     return upserted;
   },
 
+  // Amazon FBA per web SKU (order_sku), for the Velocity page's Web SKU view. Same
+  // view, same WHERE, same channel CASE as the master-SKU snapshots above, narrowed to
+  // FBA — so summed per master SKU these rows equal the FBA rows of those tables.
+  // GROUP BY is positional against FBA_WEB_SKU_SELECT (every column except the SUM at 7).
+  async fetchFbaWebSkuRowsFromLookup(
+    lookupPool: Pool,
+    source: "link" | "custom",
+    dateFilter: string
+  ): Promise<FbaWebSkuSourceRow[]> {
+    const where = source === "link" ? LINK_WHERE : CUSTOM_WHERE;
+    const alias = source === "link" ? "l" : "c";
+    const result = await lookupPool.query<FbaWebSkuSourceRow>(
+      `${FBA_WEB_SKU_SELECT(source)} ${where} ${dateFilter} ${FBA_ONLY_FILTER(alias)} GROUP BY 1, 2, 3, 4, 5, 6`
+    );
+    return result.rows;
+  },
+
+  async upsertFbaWebSkuSnapshot(
+    rows: FbaWebSkuSourceRow[],
+    source: "link" | "custom",
+    syncedAt: Date
+  ): Promise<number> {
+    const pool = getPrimaryPool();
+    let upserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      await pool.query(
+        `INSERT INTO shipcore.fc_velocity_fba_web_sku_snapshot
+           (source, order_date, item_category, channel, order_type, web_sku, master_sku, qty, synced_at)
+         SELECT $1, UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]), UNNEST($5::text[]),
+                UNNEST($6::text[]), UNNEST($7::text[]), UNNEST($8::int[]), $9::timestamptz
+         ON CONFLICT (source, order_date, item_category, channel, order_type, web_sku, master_sku)
+         DO UPDATE SET
+           qty       = EXCLUDED.qty,
+           synced_at = EXCLUDED.synced_at`,
+        [
+          source,
+          batch.map((r) => r.order_date.toISOString().slice(0, 10)),
+          batch.map((r) => r.item_category),
+          batch.map((r) => r.channel),
+          batch.map((r) => r.order_type),
+          batch.map((r) => r.web_sku),
+          batch.map((r) => r.master_sku),
+          batch.map((r) => r.qty),
+          syncedAt,
+        ]
+      );
+      upserted += batch.length;
+    }
+    return upserted;
+  },
+
+  async deleteStaleFbaWebSkuSnapshot(syncedAt: Date, full: boolean): Promise<number> {
+    const res = await getPrimaryPool().query(
+      full
+        ? `DELETE FROM shipcore.fc_velocity_fba_web_sku_snapshot WHERE synced_at < $1`
+        : `DELETE FROM shipcore.fc_velocity_fba_web_sku_snapshot WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days' AND synced_at < $1`,
+      [syncedAt]
+    );
+    return res.rowCount ?? 0;
+  },
+
   async deleteStaleSnapshots(syncedAt: Date, full: boolean): Promise<{ linkDeleted: number; customDeleted: number }> {
     const pool = getPrimaryPool();
     const [linkDeleteRes, customDeleteRes] = await Promise.all([
@@ -1161,14 +1249,26 @@ const BATCH_SIZE = 2000;
 // Only pull this many days of history — covers the 96-day max lookback with buffer.
 const SYNC_LOOKBACK_DAYS = 120;
 
+// FBA is split by destination country. The view doesn't carry shipping_country, so the
+// select joins the (small) DISTINCT set of Amazon order numbers shipped to Canada.
+// DISTINCT matters: sales_orders.order_number has duplicates, and a plain JOIN on it
+// would double-count those lines. Kept as a join rather than a per-row EXISTS, which
+// measured ~1.7x slower on the 120-day incremental pull.
+const FBA_CANADA_ORDERS_JOIN = (alias: string) => `
+     LEFT JOIN (
+       SELECT DISTINCT order_number
+         FROM ecommerce_data.sales_orders
+        WHERE platform_source::text = 'AMAZON' AND shipping_country = 'CA'
+     ) ca ON ca.order_number = ${alias}.order_number`;
+
 const CHANNEL_CASE = (alias: string) => `
   CASE
     WHEN ${alias}.platform_source::text = 'SHOPIFY_COVERLAND' AND ${alias}.tags ILIKE '%B2B%' THEN 'Coverland B2B'
     WHEN ${alias}.platform_source::text = 'SHOPIFY_COVERLAND' THEN 'Coverland B2C'
     WHEN ${alias}.platform_source::text = 'SHOPIFY_ICARCOVER' THEN 'Icarcover'
-    WHEN ${alias}.platform_source::text = 'AMAZON' AND ${alias}.fulfillment_channel::text = 'Amazon'   THEN 'Amazon FBA'
     WHEN ${alias}.platform_source::text = 'AMAZON' AND ${alias}.fulfillment_channel::text = 'Merchant' THEN 'Amazon FBM'
-    WHEN ${alias}.platform_source::text = 'AMAZON' THEN 'Amazon FBA'
+    WHEN ${alias}.platform_source::text = 'AMAZON' AND ca.order_number IS NOT NULL THEN '${FBA_CANADA_CHANNEL}'
+    WHEN ${alias}.platform_source::text = 'AMAZON' THEN '${FBA_USA_CHANNEL}'
     WHEN ${alias}.platform_source::text = 'WALMART'       THEN 'Walmart'
     WHEN ${alias}.platform_source::text = 'EBAY_AUTOARMOR' THEN 'Auto_Armor'
     WHEN ${alias}.platform_source::text = 'EBAY'           THEN 'Advance_Parts'
@@ -1260,7 +1360,7 @@ const LINK_SELECT = `
        ${normalizedMasterSkuSql("l.master_sku")} AS link_master_sku,
        SUM(l.quantity)::int AS link_qty,
        l.is_custom                AS is_custom
-     FROM ecommerce_data.vw_sales_order_items_link_new l`;
+     FROM ecommerce_data.vw_sales_order_items_link_new l${FBA_CANADA_ORDERS_JOIN("l")}`;
 
 const CUSTOM_SELECT = `
     SELECT
@@ -1271,4 +1371,36 @@ const CUSTOM_SELECT = `
        ${normalizedMasterSkuSql("c.master_sku")} AS custom_master_sku,
        SUM(c.quantity)::int AS custom_qty,
        c.is_custom                AS is_custom
-     FROM ecommerce_data.vw_sales_order_items_custom_new c`;
+     FROM ecommerce_data.vw_sales_order_items_custom_new c${FBA_CANADA_ORDERS_JOIN("c")}`;
+
+
+export interface FbaWebSkuSourceRow {
+  order_date: Date;
+  channel: string;
+  item_category: string;
+  order_type: string;
+  web_sku: string;
+  master_sku: string;
+  qty: number;
+}
+
+// Amazon rows that CHANNEL_CASE labels FBA (USA or Canada): everything but 'Merchant'.
+// IS DISTINCT FROM keeps a NULL fulfillment_channel, which CHANNEL_CASE also calls FBA.
+const FBA_ONLY_FILTER = (alias: string) => `
+       AND ${alias}.platform_source::text = 'AMAZON'
+       AND ${alias}.fulfillment_channel::text IS DISTINCT FROM 'Merchant'
+       AND ${alias}.order_sku IS NOT NULL`;
+
+const FBA_WEB_SKU_SELECT = (source: "link" | "custom") => {
+  const a = source === "link" ? "l" : "c";
+  return `
+    SELECT
+       (${a}.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
+       ${CHANNEL_CASE(a)}       AS channel,
+       ${ITEM_CATEGORY_CASE(`${a}.master_sku`)} AS item_category,
+       ${ORDER_TYPE_CASE(a)}    AS order_type,
+       ${a}.order_sku           AS web_sku,
+       ${normalizedMasterSkuSql(`${a}.master_sku`)} AS master_sku,
+       SUM(${a}.quantity)::int AS qty
+     FROM ecommerce_data.vw_sales_order_items_${source}_new ${a}${FBA_CANADA_ORDERS_JOIN(a)}`;
+};

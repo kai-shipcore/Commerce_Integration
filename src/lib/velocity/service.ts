@@ -2,8 +2,10 @@ import type { PoolClient } from "pg";
 import {
   VelocityRepository,
   buildSyncDateFilters,
+  SNAPSHOT_ORDER_TYPES,
   type VelocityQueryResult,
 } from "@/lib/velocity/repository";
+import { FBA_CHANNELS } from "@/lib/velocity/channels";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 import { ServiceUnavailableError } from "@/lib/errors";
@@ -252,6 +254,48 @@ export const VelocityService = {
     return { link: toPreorderRows(linkRows, ranges), custom: toPreorderRows(customRows, ranges) };
   },
 
+  // ─── Web SKU view (Amazon FBA only) ─────────────────────────────────────
+  //
+  // Same modes and order-type rules as getSnapshotData, read from the FBA web-SKU
+  // snapshot instead. Rows carry the web SKU alongside the master SKU; the client
+  // lines link / custom / ttm rows up by web SKU. Non-FBA channels are dropped here:
+  // only FBA has a web-SKU snapshot.
+  async getFbaWebSkuData(query: {
+    items: string[];
+    channels: string[];
+    mode: string;
+    rangesCsv: string;
+    combined: boolean;
+  }) {
+    const ranges = parseRanges(query.rangesCsv);
+    const { items, mode, combined } = query;
+    const channels = query.channels.filter((c) => (FBA_CHANNELS as readonly string[]).includes(c));
+    const empty = mode === "preorder" ? { link: [], custom: [], ttm: [] } : { link: [], custom: [] };
+    if (!items.length || !channels.length || !ranges.length) return empty;
+
+    const needsCustom = items.includes("Seat Cover");
+    const read = (source: "link" | "custom", orderTypes: string[]) =>
+      VelocityRepository.queryFbaWebSkuByRanges({ source, items, channels, orderTypes, ranges })
+        .then((rows) => toWebSkuRows(rows, ranges));
+
+    if (mode === "preorder") {
+      const linkTypes = combined ? ["preorder", "ttm_preorder"] : ["preorder"];
+      const [link, ttm, custom] = await Promise.all([
+        read("link", linkTypes),
+        combined ? Promise.resolve([]) : read("link", ["ttm_preorder"]),
+        needsCustom ? read("custom", linkTypes) : Promise.resolve([]),
+      ]);
+      return { link, custom, ttm };
+    }
+
+    const orderTypes = SNAPSHOT_ORDER_TYPES[mode === "ttm" ? "ttm" : "sales"];
+    const [link, custom] = await Promise.all([
+      read("link", orderTypes),
+      needsCustom ? read("custom", orderTypes) : Promise.resolve([]),
+    ]);
+    return { link, custom };
+  },
+
   // ─── Enrichment endpoints ──────────────────────────────────────────────
 
   async getCustomEnrich(skus: string[], search: string) {
@@ -332,10 +376,12 @@ export const VelocityService = {
 
       const { dateFilter, dateFilterC } = buildSyncDateFilters(full);
 
-      const [linkRows, customRows, linkForecastRows] = await Promise.all([
+      const [linkRows, customRows, linkForecastRows, fbaWebLinkRows, fbaWebCustomRows] = await Promise.all([
         VelocityRepository.fetchLinkRowsFromLookup(lookupPool, dateFilter),
         VelocityRepository.fetchCustomRowsFromLookup(lookupPool, dateFilterC),
         VelocityRepository.fetchLinkForecastRowsFromLookup(lookupPool),
+        VelocityRepository.fetchFbaWebSkuRowsFromLookup(lookupPool, "link", dateFilter),
+        VelocityRepository.fetchFbaWebSkuRowsFromLookup(lookupPool, "custom", dateFilterC),
       ]);
 
       const syncedAt = new Date();
@@ -343,9 +389,14 @@ export const VelocityService = {
         VelocityRepository.upsertLinkSnapshot(linkRows, syncedAt),
         VelocityRepository.upsertCustomSnapshot(customRows, syncedAt),
         VelocityRepository.upsertLinkSnapshot(linkForecastRows, syncedAt, "shipcore.fc_velocity_link_snapshot_forecast"),
+        VelocityRepository.upsertFbaWebSkuSnapshot(fbaWebLinkRows, "link", syncedAt),
+        VelocityRepository.upsertFbaWebSkuSnapshot(fbaWebCustomRows, "custom", syncedAt),
       ]);
 
-      const { linkDeleted, customDeleted } = await VelocityRepository.deleteStaleSnapshots(syncedAt, full);
+      const [{ linkDeleted, customDeleted }] = await Promise.all([
+        VelocityRepository.deleteStaleSnapshots(syncedAt, full),
+        VelocityRepository.deleteStaleFbaWebSkuSnapshot(syncedAt, full),
+      ]);
 
       await Promise.all([
         CacheManager.delete("oos-preorder:sku-list:v4"),
@@ -382,6 +433,17 @@ function parseRanges(csv: string): { from: string; to: string }[] {
 
 function toPreorderRows(rows: Array<{ master_sku: string } & Record<string, unknown>>, ranges: { from: string; to: string }[]) {
   return rows.map((r) => ({
+    masterSku: r.master_sku,
+    qtys: ranges.map((_, i) => (r[`qty_${i}`] as number) ?? 0),
+  }));
+}
+
+function toWebSkuRows(
+  rows: Array<{ web_sku: string; master_sku: string } & Record<string, unknown>>,
+  ranges: { from: string; to: string }[]
+) {
+  return rows.map((r) => ({
+    webSku: r.web_sku,
     masterSku: r.master_sku,
     qtys: ranges.map((_, i) => (r[`qty_${i}`] as number) ?? 0),
   }));

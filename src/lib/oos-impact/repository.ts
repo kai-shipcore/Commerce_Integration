@@ -6,13 +6,14 @@
  * and shipcore.fc_inventory_history_snapshot for OOS episode detection.
  */
 
+import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
 
 const WINDOW_DAYS = 30;
 const TOP_SELLERS_LIMIT = 100;
 
-const NON_SHOPIFY_CHANNELS = `'Amazon FBA','Amazon FBM','Walmart','Auto_Armor','Advance_Parts'`;
+const NON_SHOPIFY_CHANNELS = `${FBA_CHANNELS_SQL},'Amazon FBM','Walmart','Auto_Armor','Advance_Parts'`;
 const SHOPIFY_CHANNELS = `'Coverland B2C','Coverland B2B','Icarcover'`;
 
 const MIN_DAYS_SINCE_RESTOCK = 7;

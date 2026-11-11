@@ -7,6 +7,8 @@ import { toFinalMasterSku } from "@/lib/planning/master-sku";
 import { cn } from "@/lib/utils";
 
 export type VelocityRow = {
+  /** Set only in the Web SKU view (Amazon FBA): the marketplace order SKU the row is keyed on. */
+  webSku?: string | null;
   masterSku: string;
   qtys: (number | null)[];
   customMasterSku?: string | null;
@@ -318,4 +320,23 @@ export function createPreOrderColumns(labels: string[]): ColumnDef<VelocityRow>[
 
 export function createChannelColumns(labels: string[]): ColumnDef<VelocityRow>[] {
   return [masterSkuCol, ...labels.map((label, i) => makeQtyCol(i, label))];
+}
+
+const webSkuCol: ColumnDef<VelocityRow> = {
+  accessorKey: "webSku",
+  header: ({ column }) => <DataTableColumnHeader column={column} title="Web SKU" />,
+  cell: ({ row }) =>
+    row.original.isTotal ? (
+      <span className="font-semibold text-xs">Total</span>
+    ) : row.original.webSku ? (
+      <span className="font-mono text-xs">{row.original.webSku}</span>
+    ) : (
+      <PlaceholderCell />
+    ),
+  enableSorting: true,
+};
+
+/** Web SKU view: the same columns with Web SKU added as the leftmost column. */
+export function withWebSkuColumn(columns: ColumnDef<VelocityRow>[]): ColumnDef<VelocityRow>[] {
+  return [webSkuCol, ...columns];
 }

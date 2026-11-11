@@ -10,6 +10,7 @@
  * here — there's no business logic to layer, just a pass-through.
  */
 
+import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 
 export interface InboundHistoryRow {
@@ -168,7 +169,7 @@ export const SkuForecastsRepository = {
         WITH bucketed AS (
           SELECT
             ${bucketSql} AS bucket_date,
-            SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' THEN ${qtyColumn} ELSE 0 END)::int AS west,
+            SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel NOT IN (${FBA_CHANNELS_SQL}) THEN ${qtyColumn} ELSE 0 END)::int AS west,
             SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') THEN ${qtyColumn} ELSE 0 END)::int AS east
           FROM ${table}
           WHERE ${skuColumn} = $1

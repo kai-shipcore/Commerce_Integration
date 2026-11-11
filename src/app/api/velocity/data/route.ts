@@ -11,6 +11,9 @@
  *              used by all modes including preorder (client applies 2-day offset via periodsToRanges)
  *              Always filtered on order_date (UTC) — there is no timezone option.
  *   combined — "1" for preorder mode to merge preorder + ttm_preorder by master_sku (Car Cover)
+ *   view     — "webSku" reads fc_velocity_fba_web_sku_snapshot instead: Amazon FBA only
+ *              (non-FBA channels are ignored), one row per web SKU + master SKU, each row
+ *              carrying `webSku`. Omitted / anything else = the master-SKU view.
  *
  * Controller layer only: parses the request and delegates to VelocityService.
  */
@@ -22,13 +25,16 @@ import { apiSuccess, handleApiError } from "@/lib/api-response";
 export async function GET(req: NextRequest) {
   try {
     const p = req.nextUrl.searchParams;
-    const result = await VelocityService.getSnapshotData({
+    const query = {
       items: p.get("items")?.split(",").filter(Boolean) ?? [],
       channels: p.get("channels")?.split(",").filter(Boolean) ?? [],
       mode: p.get("mode") ?? "sales",
       rangesCsv: p.get("ranges") ?? "",
       combined: p.get("combined") === "1",
-    });
+    };
+    const result = p.get("view") === "webSku"
+      ? await VelocityService.getFbaWebSkuData(query)
+      : await VelocityService.getSnapshotData(query);
     return apiSuccess(result);
   } catch (error) {
     console.error("[velocity/data] GET error:", error);

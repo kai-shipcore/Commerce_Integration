@@ -23,35 +23,48 @@ import {
   createCarCoverColumns,
   createFloorMatColumns,
   toFinalCarCoverSku,
+  withWebSkuColumn,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
 import { Gauge, Check, X, Plus, RefreshCw, Download, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 import { apiPath } from "@/lib/api-path";
+import { FBA_CANADA_CHANNEL, FBA_USA_CHANNEL, LEGACY_FBA_CHANNEL } from "@/lib/velocity/channels";
 
 const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat", "SWC"] as const;
 const CHANNELS = [
   "Shopify Coverland B2B",
   "Shopify Coverland B2C",
   "Shopify Icarcover",
-  "Amazon FBA",
+  "Amazon FBA USA",
+  "Amazon FBA Canada",
   "Amazon FBM",
   "Ebay Auto_Armor",
   "Ebay Advance_Parts",
   "Walmart",
 ] as const;
 
-const CHANNEL_DB_KEY: Record<string, string> = {
-  "Shopify Coverland B2B": "Coverland B2B",
-  "Shopify Coverland B2C": "Coverland B2C",
-  "Shopify Icarcover":     "Icarcover",
-  "Amazon FBA":            "Amazon FBA",
-  "Amazon FBM":            "Amazon FBM",
-  "Ebay Auto_Armor":       "Auto_Armor",
-  "Ebay Advance_Parts":    "Advance_Parts",
-  "Walmart":               "Walmart",
+// "Amazon FBA USA" also reads the pre-split "Amazon FBA" value: snapshot rows older
+// than the incremental sync's lookback keep it until a full sync rewrites them, and
+// almost all of those were US orders (Canada is ~1.5% of FBA).
+const CHANNEL_DB_KEY: Record<string, string[]> = {
+  "Shopify Coverland B2B": ["Coverland B2B"],
+  "Shopify Coverland B2C": ["Coverland B2C"],
+  "Shopify Icarcover":     ["Icarcover"],
+  "Amazon FBA USA":        [FBA_USA_CHANNEL, LEGACY_FBA_CHANNEL],
+  "Amazon FBA Canada":     [FBA_CANADA_CHANNEL],
+  "Amazon FBM":            ["Amazon FBM"],
+  "Ebay Auto_Armor":       ["Auto_Armor"],
+  "Ebay Advance_Parts":    ["Advance_Parts"],
+  "Walmart":               ["Walmart"],
 };
+
+const FBA_UI_CHANNELS: readonly string[] = ["Amazon FBA USA", "Amazon FBA Canada"];
+
+// "master" = one row per master SKU (all channels). "webSku" = Amazon FBA only, one row
+// per web SKU (marketplace order SKU) with Web SKU as the leftmost column.
+type SkuView = "master" | "webSku";
 
 const DEFAULT_PERIODS = [90, 60, 30, 15, 7];
 
@@ -221,17 +234,23 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
 function ToggleBtn({
   active,
   onClick,
+  disabled,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={cn(
-        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         active
           ? "bg-primary text-primary-foreground"
           : "border border-border bg-background text-foreground hover:bg-muted dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
@@ -244,13 +263,48 @@ function ToggleBtn({
 
 // Shared helpers
 
+type ApiRow = { webSku?: string; masterSku: string; qtys: number[] };
 type ApiData = {
-  link: { masterSku: string; qtys: number[] }[];
-  custom: { masterSku: string; qtys: number[] }[];
-  ttm?: { masterSku: string; qtys: number[] }[];
+  link: ApiRow[];
+  custom: ApiRow[];
+  ttm?: ApiRow[];
 };
 
-function responseToRows(data: ApiData, count: number): VelocityRow[] {
+// Web SKU view: link / custom / ttm rows describe the same web SKU, so they share a row
+// (unlike the master-SKU view, where each side is its own ranked list placed side by
+// side). Link rows set the order; a custom / ttm row joins the first row with its web
+// SKU that has that side free, or starts a new row when there is none (e.g. a kit web
+// SKU that resolves to several master SKUs).
+function mergeByWebSku(
+  link: ApiRow[],
+  custom: ApiRow[],
+  ttm: ApiRow[] | undefined,
+  nullQtys: () => (number | null)[]
+): VelocityRow[] {
+  const blank = (webSku: string | null): VelocityRow => ({
+    webSku, masterSku: "", qtys: nullQtys(),
+    customMasterSku: null, customQtys: nullQtys(),
+    ttmMasterSku: null, ttmQtys: nullQtys(),
+  });
+  const rows: VelocityRow[] = link.map((r) => ({ ...blank(r.webSku ?? null), masterSku: r.masterSku, qtys: r.qtys }));
+  const place = (side: ApiRow[], skuKey: "customMasterSku" | "ttmMasterSku", qtyKey: "customQtys" | "ttmQtys") => {
+    for (const r of side) {
+      const webSku = r.webSku ?? null;
+      let target = rows.find((x) => x.webSku === webSku && x[skuKey] == null);
+      if (!target) {
+        target = blank(webSku);
+        rows.push(target);
+      }
+      target[skuKey] = r.masterSku;
+      target[qtyKey] = r.qtys;
+    }
+  };
+  place(custom, "customMasterSku", "customQtys");
+  if (ttm) place(ttm, "ttmMasterSku", "ttmQtys");
+  return rows;
+}
+
+function responseToRows(data: ApiData, count: number, view: SkuView): VelocityRow[] {
   const link = data.link ?? [];
   const custom = data.custom ?? [];
   const ttm = data.ttm;
@@ -259,14 +313,16 @@ function responseToRows(data: ApiData, count: number): VelocityRow[] {
 
   const nullQtys = () => Array(count).fill(null) as (number | null)[];
 
-  const dataRows: VelocityRow[] = Array.from({ length: maxLen }, (_, i) => ({
-    masterSku: link[i]?.masterSku ?? "",
-    qtys: link[i]?.qtys ?? nullQtys(),
-    customMasterSku: custom[i]?.masterSku ?? null,
-    customQtys: custom[i]?.qtys ?? nullQtys(),
-    ttmMasterSku: ttm?.[i]?.masterSku ?? null,
-    ttmQtys: ttm?.[i]?.qtys ?? nullQtys(),
-  }));
+  const dataRows: VelocityRow[] = view === "webSku"
+    ? mergeByWebSku(link, custom, ttm, nullQtys)
+    : Array.from({ length: maxLen }, (_, i) => ({
+        masterSku: link[i]?.masterSku ?? "",
+        qtys: link[i]?.qtys ?? nullQtys(),
+        customMasterSku: custom[i]?.masterSku ?? null,
+        customQtys: custom[i]?.qtys ?? nullQtys(),
+        ttmMasterSku: ttm?.[i]?.masterSku ?? null,
+        ttmQtys: ttm?.[i]?.qtys ?? nullQtys(),
+      }));
 
   const totalRow: VelocityRow = {
     masterSku: "Total",
@@ -288,20 +344,22 @@ async function fetchModeRows(
   item: string,
   channels: string[],
   ranges: PeriodRange[],
-  combined?: boolean
+  combined?: boolean,
+  view: SkuView = "master"
 ): Promise<VelocityRow[]> {
-  const dbChannels = [...new Set(channels.map((ch) => CHANNEL_DB_KEY[ch] ?? ch))];
+  const dbChannels = [...new Set(channels.flatMap((ch) => CHANNEL_DB_KEY[ch] ?? [ch]))];
   const params = new URLSearchParams({
     items: item,
     channels: dbChannels.join(","),
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
     ...(combined ? { combined: "1" } : {}),
+    ...(view === "webSku" ? { view: "webSku" } : {}),
   });
   const res = await fetch(apiPath(`/api/velocity/data?${params}`));
   const data = await res.json();
   if (!data.success) return [];
-  return responseToRows(data as ApiData, ranges.length);
+  return responseToRows(data as ApiData, ranges.length, view);
 }
 
 // Custom Range Editor
@@ -412,10 +470,11 @@ interface PaneProps {
   ranges: PeriodRange[];
   selectedItem: string;
   selectedChannels: string[];
+  view: SkuView;
   exportSlot: HTMLDivElement | null;
 }
 
-function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItem, selectedChannels, view, exportSlot }: PaneProps) {
   const { pick } = useI18n();
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -427,13 +486,16 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
   const labels = useMemo(() => ranges.map((r) => `${rangeDays(r)}D`), [ranges]);
 
   const columns = useMemo(() => {
-    if (selectedItem === "Car Cover") return createCarCoverColumns(labels);
-    if (selectedItem === "SWC")       return createCarCoverColumns(labels);
-    if (selectedItem === "Floor Mat") return createFloorMatColumns(labels);
-    if (mode === "preorder") return createPreOrderColumns(labels);
-    if (mode === "ttm") return createTtmColumns(labels);
-    return createSalesSalesColumns(labels);
-  }, [mode, labels, selectedItem]);
+    const base = (() => {
+      if (selectedItem === "Car Cover") return createCarCoverColumns(labels);
+      if (selectedItem === "SWC")       return createCarCoverColumns(labels);
+      if (selectedItem === "Floor Mat") return createFloorMatColumns(labels);
+      if (mode === "preorder") return createPreOrderColumns(labels);
+      if (mode === "ttm") return createTtmColumns(labels);
+      return createSalesSalesColumns(labels);
+    })();
+    return view === "webSku" ? withWebSkuColumn(base) : base;
+  }, [mode, labels, selectedItem, view]);
 
   const rangesKey = ranges.map((r) => `${r.from}:${r.to}`).join(",");
 
@@ -441,17 +503,17 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset pagination after velocity filter changes.
     setPagination((p) => ({ ...p, page: 1 }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey, view]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Start table loading after velocity query changes.
     setLoading(true);
-    fetchModeRows(mode, selectedItem, selectedChannels, ranges, false)
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges, false, view)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey, view]);
 
   const filtered = useMemo(() => {
     const hasAnyQty = (r: VelocityRow) =>
@@ -465,6 +527,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
     const q = search.toLowerCase();
     return base.filter((r) => {
       if (r.isTotal) return true;
+      if (r.webSku?.toLowerCase().includes(q)) return true;
       if (r.masterSku.toLowerCase().includes(q)) return true;
       if (selectedItem === "Car Cover") {
         return toFinalCarCoverSku(r.masterSku).toLowerCase().includes(q);
@@ -488,6 +551,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
       if (sortBy === "masterSku") {
         return dir * a.masterSku.localeCompare(b.masterSku);
       }
+      if (sortBy === "webSku") {
+        return dir * (a.webSku ?? "").localeCompare(b.webSku ?? "");
+      }
       const m = sortBy.match(/^qty_(\d+)$/);
       if (m) {
         const i = Number(m[1]);
@@ -503,7 +569,10 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
     pagination.page * pagination.pageSize
   );
 
-  const label = [selectedItem, ...selectedChannels].join("_").replace(/\s+/g, "");
+  const labelChannels = view === "webSku"
+    ? [...selectedChannels.filter((c) => FBA_UI_CHANNELS.includes(c)), "WebSKU"]
+    : selectedChannels;
+  const label = [selectedItem, ...labelChannels].join("_").replace(/\s+/g, "");
 
   const handleExportCurrent = useCallback(() => {
     exportCurrentVelocity(allRows, mode, labels, label, selectedItem);
@@ -513,9 +582,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
     setExportingAll(true);
     try {
       const [salesRows, ttmRows, preorderRows] = await Promise.all([
-        fetchModeRows("sales",    selectedItem, selectedChannels, ranges),
-        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges),
-        fetchModeRows("preorder", selectedItem, selectedChannels, ranges),
+        fetchModeRows("sales",    selectedItem, selectedChannels, ranges, false, view),
+        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges, false, view),
+        fetchModeRows("preorder", selectedItem, selectedChannels, ranges, false, view),
       ]);
       exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label, selectedItem);
     } catch {
@@ -523,7 +592,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
     } finally {
       setExportingAll(false);
     }
-  }, [selectedItem, selectedChannels, ranges, labels, label]);
+  }, [selectedItem, selectedChannels, ranges, labels, label, view]);
 
   const exportButtons = (
     <div className="flex items-center gap-2">
@@ -561,7 +630,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot
           setPagination((p) => ({ ...p, page: 1 }));
         }}
         onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
-        searchPlaceholder={pick("마스터 SKU 검색...", "Search Master SKU...")}
+        searchPlaceholder={view === "webSku"
+          ? pick("Web SKU / 마스터 SKU 검색...", "Search Web SKU / Master SKU...")
+          : pick("마스터 SKU 검색...", "Search Master SKU...")}
         isLoading={loading}
       />
     </div>
@@ -575,6 +646,7 @@ export default function VelocityPage() {
   const [selectedItem, setSelectedItem] = useState<string>("Car Cover");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([...CHANNELS]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
+  const [skuView, setSkuView] = useState<SkuView>("master");
   const [periodMode, setPeriodMode] = useState<"period" | "custom">(() =>
     typeof window !== "undefined"
       ? ((localStorage.getItem("velocity_period_mode") as "period" | "custom") ?? "period")
@@ -608,6 +680,9 @@ export default function VelocityPage() {
   useEffect(() => { localStorage.setItem("velocity_custom_ranges", JSON.stringify(customRanges)); }, [customRanges]);
 
   const activeRanges = periodMode === "period" ? periodsToRanges(periods) : customRanges;
+  const hasFbaSelected = selectedChannels.some((c) => FBA_UI_CHANNELS.includes(c));
+  // The Web SKU view exists for Amazon FBA only; with no FBA channel selected it falls back.
+  const activeView: SkuView = hasFbaSelected ? skuView : "master";
 
   useEffect(() => {
     fetch(apiPath("/api/velocity/sync"))
@@ -743,6 +818,23 @@ export default function VelocityPage() {
                   <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>{pick("TTM", "TTM")}</ToggleBtn>
                   <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre-Order</ToggleBtn>
                 </div>
+                <span className="ml-3 shrink-0 text-xs font-medium text-muted-foreground">{pick("기준", "Rows")}</span>
+                <div className="flex items-center gap-2">
+                  <ToggleBtn active={activeView === "master"} onClick={() => setSkuView("master")}>Master SKU</ToggleBtn>
+                  <ToggleBtn
+                    active={activeView === "webSku"}
+                    disabled={!hasFbaSelected}
+                    title={hasFbaSelected
+                      ? pick("Amazon FBA 판매만 Web SKU별로 표시합니다", "Shows Amazon FBA sales only, per web SKU")
+                      : pick("Amazon FBA USA 또는 Canada를 선택하세요", "Select Amazon FBA USA or Canada")}
+                    onClick={() => setSkuView("webSku")}
+                  >
+                    Web SKU
+                  </ToggleBtn>
+                </div>
+                {activeView === "webSku" && (
+                  <span className="text-xs text-muted-foreground">{pick("Amazon FBA만 표시", "Amazon FBA only")}</span>
+                )}
                 <div className="ml-auto flex items-center gap-3">
                   <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
                     <button
@@ -794,6 +886,7 @@ export default function VelocityPage() {
               ranges={activeRanges}
               selectedItem={selectedItem}
               selectedChannels={selectedChannels}
+              view={activeView}
               exportSlot={exportSlot}
             />
           )}

@@ -85,6 +85,11 @@ function buildSection(
     }
   }
 
+  // Web SKU view: same layout with Web SKU as the first column.
+  if (rows.some((r) => r.webSku != null)) {
+    return result.map((line, i) => [i === 0 ? "Web SKU" : (rows[i - 1]?.isTotal ? "Total" : rows[i - 1]?.webSku ?? null), ...line]);
+  }
+
   return result;
 }
 

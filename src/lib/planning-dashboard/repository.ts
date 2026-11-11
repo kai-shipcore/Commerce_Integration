@@ -13,6 +13,7 @@
  * allocate/deallocate split in src/lib/available-stock/repository.ts.
  */
 
+import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import type { Pool, PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 
@@ -226,7 +227,7 @@ export const PlanningDashboardRepository = {
     walmart_90d: string;
   }>> {
     const SHOPIFY_CHANNELS = `'Coverland B2C','Coverland B2B','Icarcover'`;
-    const AMAZON_CHANNELS = `'Amazon FBA','Amazon FBM'`;
+    const AMAZON_CHANNELS = `${FBA_CHANNELS_SQL},'Amazon FBM'`;
     const EBAY_CHANNELS = `'Auto_Armor','Advance_Parts'`;
 
     const result = await pool().query<{
