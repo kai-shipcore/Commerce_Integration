@@ -423,9 +423,29 @@ describe("SkuMasterService floor mat sets", () => {
     await expect(
       SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-80-FM1", preOrder12: "maybe" }])
     ).rejects.toThrow("Invalid 1~2 Row Pre-Order");
-    await expect(
-      SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-80-FM1", thirdRowSkus: "CA-FM-A", preOrder3Values: "Yes|No" }])
-    ).rejects.toThrow("2 3rd Row Pre-Order values for 1 3rd Row SKU(s)");
+  });
+
+  it("imports the rest of a row whose 3rd Row Pre-Order values do not match its 3rd Row SKUs", async () => {
+    repositoryMock.findExistingValuesBySkus.mockResolvedValue(new Map());
+    floorMatSetRepositoryMock.findExistingProductSkus.mockResolvedValue(new Set(["CA-FM-F", "CA-FM-A"]));
+
+    // The planning sheet has cells like this: two values, one 3rd Row SKU.
+    const rows = [{ masterSku: "CA-FM-80-FM1", moq: 7, frontSku: "CA-FM-F", thirdRowSkus: "CA-FM-A", preOrder3Values: "None\nYes" }];
+    const result = await SkuMasterService.previewExcelImport(rows);
+
+    expect(result.floorMatSetWarnings).toEqual([
+      "CA-FM-80-FM1: 2 3rd Row Pre-Order values for 1 3rd Row SKU(s); 3rd Row Pre-Order not imported for this SKU",
+    ]);
+    // The link itself, and the row's other columns, still go through.
+    expect(result.rows[0].next).toMatchObject({ moq: 7, floorMatSet: "1st: CA-FM-F / 3rd: CA-FM-A" });
+
+    repositoryMock.applyExcelImport.mockResolvedValue({ updated: 0, inserted: 1 });
+    await SkuMasterService.applyExcelImport(rows);
+    expect(repositoryMock.applyExcelImport).toHaveBeenCalledWith(
+      expect.any(Array),
+      [{ masterSku: "CA-FM-80-FM1", set: expect.objectContaining({ frontSku: "CA-FM-F", thirdRows: [{ sku: "CA-FM-A", preOrder: null }] }) }],
+      "Tester"
+    );
   });
 });
 

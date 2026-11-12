@@ -27,6 +27,7 @@ import {
   DEFAULT_HEADER_HEIGHT,
   COLUMN_WIDTHS_STORAGE_KEY,
   CON_SUBCOLS,
+  FLOOR_MAT_COLUMN_IDS,
   GROUP_LABELS,
   TINT_COLORS,
   getPlanningAnchor,
@@ -7536,7 +7537,15 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
     if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
 
-    const pinnedColumns = visibleBaseColumns.slice(0, freezeIndex + 1);
+    // The floor mat set columns are some 2,000px wide together. A view frozen
+    // past Master SKU (many freeze through S.O.D.) would pin all of them and
+    // leave almost no room to scroll, so they stay scrollable and follow the
+    // frozen block instead, unless the freeze column is itself one of them.
+    const floorMatColumnIds: readonly string[] = FLOOR_MAT_COLUMN_IDS;
+    const freezeIsFloorMatColumn = floorMatColumnIds.includes(freezeUntil);
+    const pinnedColumns = visibleBaseColumns
+      .slice(0, freezeIndex + 1)
+      .filter((column) => freezeIsFloorMatColumn || !floorMatColumnIds.includes(column.id));
     const desiredWidths = Object.fromEntries(
       pinnedColumns.map((column) => [
         column.id,

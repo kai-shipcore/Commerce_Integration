@@ -366,11 +366,18 @@ export const SkuMasterService = {
    * Resolves each import row's floor mat set columns into the full set that
    * would be stored, merged over what is stored now. Rows with no set columns
    * are absent from the result.
+   *
+   * 3rd Row Pre-Order values that cannot be matched to 3rd Row SKUs (the
+   * planning sheet has cells with one value for two SKUs, or two for one) are
+   * left out for that row and reported in `warnings`, rather than failing the
+   * file: the team imports that same sheet for CBM, and a mismatched
+   * Pre-Order cell must not block it.
    */
   async resolveFloorMatSetImports(rows: ExcelSkuRow[]) {
     const setRows = rows.filter(hasFloorMatSetImportFields);
     const existing = await FloorMatSetRepository.findBySkus(setRows.map((row) => row.masterSku));
     const resolved = new Map<string, { current: FloorMatSet | null; next: FloorMatSet; changed: boolean }>();
+    const warnings: string[] = [];
 
     for (const row of setRows) {
       const current = existing.get(row.masterSku) ?? null;
@@ -378,14 +385,17 @@ export const SkuMasterService = {
       try {
         next = mergeFloorMatSetImport(row.masterSku, current, row);
       } catch (error) {
-        throw new ValidationError(error instanceof Error ? error.message : "Invalid floor mat set");
+        const message = error instanceof Error ? error.message : "Invalid floor mat set";
+        if (!row.preOrder3Values) throw new ValidationError(message);
+        warnings.push(`${message}; 3rd Row Pre-Order not imported for this SKU`);
+        next = mergeFloorMatSetImport(row.masterSku, current, { ...row, preOrder3Values: undefined });
       }
       const problem = validateFloorMatSet(row.masterSku, next);
       if (problem) throw new ValidationError(problem);
       resolved.set(row.masterSku, { current, next, changed: !sameFloorMatSet(current, next) });
     }
 
-    return resolved;
+    return { resolved, warnings };
   },
 
   async previewExcelImport(rawRows: unknown[]) {
@@ -394,7 +404,7 @@ export const SkuMasterService = {
       throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
     }
 
-    const [existingBySku, setsBySku] = await Promise.all([
+    const [existingBySku, { resolved: setsBySku, warnings: floorMatSetWarnings }] = await Promise.all([
       SkuMasterRepository.findExistingValuesBySkus(rows.map((row) => row.masterSku)),
       this.resolveFloorMatSetImports(rows),
     ]);
@@ -444,7 +454,7 @@ export const SkuMasterService = {
       { insert: 0, update: 0, unchanged: 0 }
     );
 
-    return { rows: previewRows, summary, unknownComponentSkus };
+    return { rows: previewRows, summary, unknownComponentSkus, floorMatSetWarnings };
   },
 
   async applyExcelImport(rawRows: unknown[]) {
@@ -453,7 +463,7 @@ export const SkuMasterService = {
       throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
     }
 
-    const setsBySku = await this.resolveFloorMatSetImports(rows);
+    const { resolved: setsBySku } = await this.resolveFloorMatSetImports(rows);
     const floorMatSets: FloorMatSetWrite[] = [...setsBySku.entries()]
       .filter(([, set]) => set.changed)
       .map(([masterSku, set]) => ({ masterSku, set: set.next }));

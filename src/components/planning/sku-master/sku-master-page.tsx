@@ -152,6 +152,8 @@ type ImportPreview = {
   summary: { insert: number; update: number; unchanged: number };
   // Linked component SKUs with no SKU Master row: allowed, but usually a typo.
   unknownComponentSkus?: string[];
+  // 3rd Row Pre-Order cells that could not be matched to 3rd Row SKUs and were left out.
+  floorMatSetWarnings?: string[];
 };
 
 function normalizeHeader(value: unknown): string {
@@ -1097,6 +1099,20 @@ export function SkuMasterPage() {
                     {importPreview.unknownComponentSkus.slice(0, 20).join(", ")}
                     {importPreview.unknownComponentSkus.length > 20 ? " …" : ""}
                   </span>
+                </div>
+              ) : null}
+
+              {importPreview.floorMatSetWarnings?.length ? (
+                <div className="max-h-28 overflow-auto border-b border-amber-200 bg-amber-50 px-6 py-2.5 text-xs leading-5 text-amber-900">
+                  <div className="font-semibold">
+                    {pick(
+                      `3열 Pre-Order 값과 3열 SKU 개수가 맞지 않아 가져오지 않은 행 ${importPreview.floorMatSetWarnings.length}개 (나머지 값은 반영됩니다):`,
+                      `${importPreview.floorMatSetWarnings.length} row(s) whose 3rd Row Pre-Order values do not match their 3rd Row SKUs were left out (the rest of each row is imported):`
+                    )}
+                  </div>
+                  {importPreview.floorMatSetWarnings.map((warning) => (
+                    <div key={warning} className="font-mono">{warning}</div>
+                  ))}
                 </div>
               ) : null}
 
