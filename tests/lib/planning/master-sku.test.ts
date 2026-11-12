@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { isPartMasterSku, normalizeMasterSku, partMasterSkuSql, toFinalMasterSku } from "@/lib/planning/master-sku";
+import { inventoryMasterSkuSql, isPartMasterSku, normalizeMasterSku, normalizedMasterSkuSql, partMasterSkuSql, toFinalMasterSku } from "@/lib/planning/master-sku";
 
 describe("toFinalMasterSku", () => {
   it("renames the discontinued TN line to TNS", () => {
@@ -70,5 +70,20 @@ describe("partMasterSkuSql", () => {
     expect(sql).toContain("p.master_sku");
     expect(sql).toContain("~*");
     expect(sql).toContain("(^|-)PARTS?(-|$)");
+  });
+});
+
+describe("inventoryMasterSkuSql", () => {
+  it("keeps the exact remaps but leaves legacy SWC spellings on their own SKU", () => {
+    const sql = inventoryMasterSkuSql("master_sku");
+    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+    expect(sql).not.toContain("SWC");
+    expect(sql).toContain("ELSE BTRIM(master_sku)");
+  });
+
+  it("leaves the sales normalisation folding legacy SWC spellings", () => {
+    const sql = normalizedMasterSkuSql("master_sku");
+    expect(sql).toContain("'^CA-([^-]+)-SWC-(.+)$'");
+    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
   });
 });

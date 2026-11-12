@@ -12,15 +12,32 @@ export function normalizeMasterSku(masterSku: string): string {
   return remapped.replace(LEGACY_SWC_PATTERN, "CA-SWC-$1-$2");
 }
 
-export function normalizedMasterSkuSql(skuExpression: string): string {
-  const exactWhens = Object.entries(MASTER_SKU_REMAP)
+function exactRemapWhensSql(skuExpression: string): string {
+  return Object.entries(MASTER_SKU_REMAP)
     .map(([from, to]) => `WHEN ${skuExpression} = '${from}' THEN '${to}'`)
     .join(" ");
+}
 
+export function normalizedMasterSkuSql(skuExpression: string): string {
   return `CASE
     WHEN BTRIM(${skuExpression}) ~ '^CA-[^-]+-SWC-.+$'
       THEN regexp_replace(BTRIM(${skuExpression}), '^CA-([^-]+)-SWC-(.+)$', 'CA-SWC-\\1-\\2')
-    ${exactWhens}
+    ${exactRemapWhensSql(skuExpression)}
+    ELSE BTRIM(${skuExpression})
+  END`;
+}
+
+// Inventory keeps a legacy SWC SKU (CA-10-SWC-47-BKBK) on its own row instead
+// of folding it onto the current one (CA-SWC-10-47-BKBK). Folding it summed two
+// warehouse lines into one figure that matched nothing in the Inventory page:
+// CA-SWC-10-47-BKBK read 185 in Demand Planning against 89 on the shelf under
+// that SKU (2026-11-12). Sales still fold through normalizedMasterSkuSql,
+// since orders placed before the 2026-07-22 rename carry the legacy spelling
+// and the current SKU's history would otherwise start at the rename.
+// The three exact remaps in MASTER_SKU_REMAP still apply to stock.
+export function inventoryMasterSkuSql(skuExpression: string): string {
+  return `CASE
+    ${exactRemapWhensSql(skuExpression)}
     ELSE BTRIM(${skuExpression})
   END`;
 }

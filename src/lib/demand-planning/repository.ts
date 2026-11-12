@@ -15,7 +15,7 @@ import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
-import { normalizedMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
+import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
 
 function primary(): Pool {
   return getPrimaryPool();
@@ -125,7 +125,17 @@ function productCategoryWhere(categoryCodes: DashboardFilters["categoryCodes"]):
   const fallback = patterns.length
     ? ` OR (p.category_code IS NULL AND (${patterns.join(" OR ")}))`
     : "";
-  return `WHERE (UPPER(p.category_code) = ANY($1::text[])${fallback})`;
+  return `(UPPER(p.category_code) = ANY($1::text[])${fallback})`;
+}
+
+// SKUs set to Inactive in SKU Master are dropped from the planning grid, and so
+// from every automatic order calculation, which only sees the grid's rows. A SKU
+// with no fc_products row at all is not inactive and stays.
+const EXCLUDE_INACTIVE_PRODUCT = `p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status`;
+
+function statsRowsWhere(categoryCodes: DashboardFilters["categoryCodes"]): string {
+  const conditions = [EXCLUDE_INACTIVE_PRODUCT, productCategoryWhere(categoryCodes)].filter(Boolean);
+  return `WHERE ${conditions.join(" AND ")}`;
 }
 
 // Which velocity lane a category reads from in link mode: Car Cover, Floor Mat
@@ -317,7 +327,7 @@ export const DemandPlanningRepository = {
         COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST,
         c.id DESC
     ) completed ON completed.master_sku = s.master_sku
-    ${productCategoryWhere(categoryCodes)}
+    ${statsRowsWhere(categoryCodes)}
     ORDER BY s.master_sku
   `, categoryParams);
     return result.rows;
@@ -481,15 +491,15 @@ export const DemandPlanningRepository = {
   async getInventorySnapshotAsOf(asOfDate: string): Promise<InventorySnapshotRow[]> {
     const lookup = getLookupPool();
     if (!lookup) return [];
-    // Normalised first, then aggregated: normalizedMasterSkuSql folds several
-    // source SKUs onto one master (the SWC rewrite and the exact remaps), so
-    // after picking each master's latest day its rows still have to be summed
-    // — matching how getInventoryByWarehouse builds the fc_stats values these
+    // Normalised first, then aggregated: inventoryMasterSkuSql folds the exact
+    // remaps onto one master (legacy SWC spellings stay separate), so after
+    // picking each master's latest day its rows still have to be summed —
+    // matching how getInventoryByWarehouse builds the fc_stats values these
     // numbers stand in for.
     const result = await lookup.query<InventorySnapshotRow>(`
       WITH normalized AS (
         SELECT
-          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          ${inventoryMasterSkuSql("master_sku")} AS master_sku,
           snapshot_date,
           COALESCE(available, 0)::int AS available,
           COALESCE(backorder, 0)::int AS backorder
@@ -563,7 +573,7 @@ export const DemandPlanningRepository = {
     const result = await lookup.query(`
       WITH normalized_inventory AS (
         SELECT
-          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          ${inventoryMasterSkuSql("master_sku")} AS master_sku,
           warehouse,
           on_hand,
           available,

@@ -64,15 +64,6 @@ const VALID_SALES_TYPES = ["Original", "Custom"] as const;
 const floorMatOnlyStatusMessage = (masterSku: string, status: string) =>
   `${status} is a floor mat status and cannot be set on ${masterSku}`;
 
-/** The dashboard reads SKU Master values through a 5-minute cache. */
-async function refreshDashboardCache() {
-  try {
-    await invalidatePlanningDashboardCache();
-  } catch (error) {
-    console.error("Planning dashboard cache invalidation failed:", error);
-  }
-}
-
 /** Reads one import cell that may be a string, an array, or absent. */
 function importCell(value: unknown): string | unknown[] | null {
   if (Array.isArray(value)) return value.length > 0 ? value : null;
@@ -294,7 +285,8 @@ export const SkuMasterService = {
         session?.user?.name ?? session?.user?.email ?? session?.user?.id ?? null
       );
     }
-    await refreshDashboardCache();
+    // Status, MOQ, CBM, Type and the floor mat set links all feed the planning grid.
+    await invalidatePlanningDashboardCache();
 
     void logAudit({
       entityType: "sku",
@@ -471,7 +463,7 @@ export const SkuMasterService = {
     const actor = session?.user?.name ?? session?.user?.email ?? session?.user?.id ?? null;
 
     const { updated, inserted } = await SkuMasterRepository.applyExcelImport(rows, floorMatSets, actor);
-    await refreshDashboardCache();
+    await invalidatePlanningDashboardCache();
     return { imported: rows.length, upserted: updated + inserted, updated, inserted };
   },
 
@@ -479,6 +471,7 @@ export const SkuMasterService = {
     if (!masterSku) throw new ValidationError("masterSku is required");
 
     await SkuMasterRepository.deactivateProduct(masterSku);
+    await invalidatePlanningDashboardCache();
 
     const session = await auth();
     void logAudit({

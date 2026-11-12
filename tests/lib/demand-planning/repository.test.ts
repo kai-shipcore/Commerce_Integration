@@ -67,6 +67,17 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     expect(sql).toContain("p.total_avg_curr_override::float8");
   });
 
+  it("drops SKUs marked inactive in SKU Master, with or without a category filter", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCodes: ["CC"], inboundStatuses: "('shipped')" });
+    const [unfiltered, params] = primaryQueryMock.mock.calls[0];
+    const [filtered] = primaryQueryMock.mock.calls[1];
+    expect(unfiltered).toContain("WHERE p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status\n");
+    expect(params).toEqual([]);
+    expect(filtered).toContain("WHERE p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status AND (UPPER(p.category_code) = ANY($1::text[])");
+  });
+
   it("uses fc_stats directly for SC category in link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["SC"], inboundStatuses: "('shipped')" });
@@ -221,6 +232,16 @@ describe("DemandPlanningRepository.getInventoryByWarehouse", () => {
     const rows = await DemandPlanningRepository.getInventoryByWarehouse();
     expect(rows).toEqual([{ master_sku: "SKU-1" }]);
   });
+
+  // CA-10-SWC-47-BKBK (96) was being added onto CA-SWC-10-47-BKBK (89), so
+  // Demand Planning showed 185 against 89 on the Inventory page.
+  it("keeps legacy SWC spellings on their own row but still applies the exact remaps", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getInventoryByWarehouse();
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).not.toContain("SWC");
+    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+  });
 });
 
 describe("DemandPlanningRepository.getOosEpisodes", () => {
@@ -316,6 +337,14 @@ describe("DemandPlanningRepository.getInventorySnapshotAsOf", () => {
     expect(sql).toContain("SUM(n.available)::int");
     expect(sql).toContain("SUM(n.backorder)::int");
     expect(sql).toContain("GROUP BY n.master_sku, l.snapshot_date");
+  });
+
+  it("does not fold legacy SWC spellings onto the current SKU", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getInventorySnapshotAsOf("2026-08-12");
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).not.toContain("SWC");
+    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
   });
 
   it("returns nothing when the lookup DB is not configured", async () => {
