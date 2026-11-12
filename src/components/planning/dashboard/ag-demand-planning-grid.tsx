@@ -75,6 +75,7 @@ import {
   getTier,
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
+import { planTargetOrders, type TargetOrderCandidate } from "@/lib/planning/target-order-plan";
 import type { CellContent, ColumnFilterMenuSize, EditMenuActions, EditMenuAvailability, TextFormatSettings } from "./columns";
 import { findSheetDownBoundary } from "./sheet-navigation";
 import type { DemandPlanningGridProps, PlanningFormatHistoryChange, PlanningViewStatePatch } from "./demand-planning-grid";
@@ -147,6 +148,8 @@ type QtyOverride = {
   cbm_unit?: number | null;
   item_id?: number;
   allocated_remaining_qty?: number | null;
+  /** Cleared by an automatic order calculation: Save removes the stored item. */
+  clear_on_save?: boolean;
 };
 
 type ChainDerived = {
@@ -229,18 +232,35 @@ type CapacityMode = "fit" | "unlimited";
 type TargetOrder = { row: DemandRow; qty: number; cbmUnit: number };
 type TargetOrderPreview = {
   orders: TargetOrder[];
+  /** Candidate SKUs that already hold a quantity in this container but get none from this calculation. */
+  clears: DemandRow[];
+  /** Candidate SKUs whose existing quantity in this container is replaced (re-planned or cleared). */
+  replacedSkuCount: number;
   skuCount: number;
   totalQty: number;
+  /** Container total after applying: the new orders plus fixedCbm. */
   totalCbm: number;
   capacityCbm: number;
+  /** CBM already in the container on SKUs this calculation does not plan; it stays and counts first. */
+  fixedCbm: number;
   excessCbm: number;
-  /** What the target days call for before any CBM cap (equals the totals in "unlimited" mode). */
+  /** What the target days call for before any CBM cap (equals the totals in "unlimited" mode); CBM includes fixedCbm. */
   requiredSkuCount: number;
   requiredQty: number;
   requiredCbm: number;
+  /** Share of the target days the Fit result covers (1 = full target). */
+  targetScale: number;
   /** Replacing Soon SKUs among the candidates: fixed at their own target days. */
   replacingSoon: { skuCount: number; orderedSkuCount: number; qty: number; cbm: number };
 };
+
+function emptyTargetOrderPreview(capacityCbm = 0): TargetOrderPreview {
+  return {
+    orders: [], clears: [], replacedSkuCount: 0, skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, fixedCbm: 0,
+    excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, targetScale: 1,
+    replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 },
+  };
+}
 
 type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
 type QtyEditorRegistration = {
@@ -3328,7 +3348,7 @@ function CapacityModePanel({
           <input type="radio" name="capacity-mode" checked={mode === "fit"} onChange={() => onChange("fit")} />
           <span>
             <strong className="block text-[#1A1917]">{pick("컨테이너 CBM 용량에 맞춤", "Fit to container CBM capacity")}</strong>
-            <span className="mt-0.5 block text-[#7A766F]">{pick("용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.", "If capacity is insufficient, quantities are reduced or the SKU is excluded.")}</span>
+            <span className="mt-0.5 block text-[#7A766F]">{pick("용량이 부족하면 모든 SKU의 목표일수를 같은 비율로 낮춰 용량에 맞춥니다.", "If capacity is insufficient, every SKU's target days are lowered by the same share to fit.")}</span>
           </span>
         </label>
         <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "unlimited" ? "border-amber-500 bg-amber-50" : "border-[#D8D6CE] bg-white"}`}>
@@ -3377,11 +3397,31 @@ function CapacityModePanel({
           </div>
         </div>
       ) : null}
+      {preview.replacedSkuCount > 0 || preview.fixedCbm > 0.005 ? (
+        <div className="rounded-md border border-[#D8D6CE] bg-white px-3 py-2 text-xs text-[#5A5750]">
+          {preview.replacedSkuCount > 0 ? (
+            <div>
+              {pick(
+                `이미 수량이 있는 ${preview.replacedSkuCount.toLocaleString()} SKU는 계산값으로 덮어씁니다${preview.clears.length > 0 ? ` (${preview.clears.length.toLocaleString()} SKU는 비움)` : ""}.`,
+                `Existing quantities on ${preview.replacedSkuCount.toLocaleString()} SKUs are replaced by the calculation${preview.clears.length > 0 ? ` (${preview.clears.length.toLocaleString()} cleared)` : ""}.`,
+              )}
+            </div>
+          ) : null}
+          {preview.fixedCbm > 0.005 ? (
+            <div>
+              {pick(
+                `계산 대상이 아닌 SKU의 기존 수량 ${preview.fixedCbm.toFixed(2)} CBM은 그대로 두고 용량에 포함합니다.`,
+                `${preview.fixedCbm.toFixed(2)} CBM already planned on SKUs outside this calculation stays and counts toward capacity.`,
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {showRequired && trimmedCbm > 0.005 ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
           {pick(
-            `목표일수 기준 필요량은 ${preview.requiredCbm.toFixed(2)} CBM입니다. 용량에 맞추느라 ${trimmedCbm.toFixed(2)} CBM은 채우지 않습니다. 필요량을 용량 안으로 줄이려면 목표일수를 낮추세요.`,
-            `The target days call for ${preview.requiredCbm.toFixed(2)} CBM. ${trimmedCbm.toFixed(2)} CBM is left out to fit the container. Lower target days to bring the need within capacity.`,
+            `목표일수 기준 필요량은 ${preview.requiredCbm.toFixed(2)} CBM입니다. 용량에 맞추기 위해 모든 SKU의 목표일수를 ${Math.round(preview.targetScale * 100)}%로 낮췄습니다.`,
+            `The target days call for ${preview.requiredCbm.toFixed(2)} CBM. To fit the container, every SKU's target days were lowered to ${Math.round(preview.targetScale * 100)}%.`,
           )}
         </div>
       ) : null}
@@ -7171,59 +7211,70 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   ): TargetOrderPreview => {
     const prevContainer = containers[containerIndex - 1];
     const capacityCbm = Number(container.cbm_cap) || 0;
-    if (!prevContainer) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
-    }
+    if (!prevContainer) return emptyTargetOrderPreview(capacityCbm);
 
     const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
     const gapBeforeDays = Math.round(
       (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
     );
+    const existingQtyInContainer = (row: DemandRow) => {
+      const override = qtyOverrides.get(`${row.sku}::${container.name}`);
+      const cell = row.containers?.[container.name];
+      const qty = override !== undefined ? override.inbound_qty ?? 0 : cell?.inbound_qty ?? 0;
+      const cbmUnit = override?.cbm_unit ?? cell?.cbm_unit ?? row.cbm_per_unit ?? 0;
+      return { qty, cbmUnit };
+    };
+
+    // The calculator owns the candidate SKUs' quantities in this container:
+    // its result replaces whatever is there, including clearing it. Every
+    // other SKU's quantity (other categories, Part / SWC / Hold, rows hidden
+    // by a filter) stays and takes its share of the capacity first. Both used
+    // to be ignored, so applying added on top of what was already planned and
+    // pushed the container past its capacity.
     const rows = targetCandidateRows();
-    const orders: TargetOrder[] = [];
-    let usedCbm = 0;
-    let requiredSkuCount = 0;
-    let requiredQty = 0;
-    let requiredCbm = 0;
-    const replacingSoon = { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 };
-    for (const row of rows) if (row.replacing_soon_days != null) replacingSoon.skuCount += 1;
+    const candidateSkus = new Set(rows.map((row) => row.sku));
+    let fixedCbm = 0;
+    for (const row of data.rows) {
+      if (candidateSkus.has(row.sku)) continue;
+      const { qty, cbmUnit } = existingQtyInContainer(row);
+      if (qty > 0) fixedCbm += qty * cbmUnit;
+    }
 
-    for (const row of rows) {
-      // Replacing Soon SKUs are fixed at their registered inventory life,
-      // whatever the fixed target or sales-range target would give.
-      const targetDays = row.replacing_soon_days ?? resolveTargetDays(row);
-      if (!Number.isFinite(targetDays) || targetDays <= 0) continue;
-
+    const candidates: TargetOrderCandidate[] = rows.map((row) => {
       const adjDaily = row.total_avg_curr * seasonFactor;
-      const step = Math.max(1, row.order_multiple ?? 1);
-      const moq = Math.max(1, row.moq ?? 1);
       const prev = chainMap.get(row.sku)?.get(prevContainer.name);
-      const prevCarryover = prev?.carryover ?? 0;
-      const backorder = prev?.backorder ?? 0;
-      const remainingAtArrival = Math.max(0, prevCarryover - adjDaily * gapBeforeDays);
-      const need = adjDaily * targetDays + backorder - remainingAtArrival;
-      if (need <= 0) continue;
+      return {
+        key: row.sku,
+        adjDaily,
+        // Replacing Soon SKUs are fixed at their registered inventory life,
+        // whatever the fixed target or sales-range target would give.
+        targetDays: row.replacing_soon_days ?? resolveTargetDays(row),
+        backorder: prev?.backorder ?? 0,
+        remainingAtArrival: Math.max(0, (prev?.carryover ?? 0) - adjDaily * gapBeforeDays),
+        moq: row.moq ?? 1,
+        step: row.order_multiple ?? 1,
+        cbmUnit: row.cbm_per_unit ?? 0,
+      };
+    });
+    const plan = planTargetOrders(
+      candidates,
+      capacityMode === "fit" ? Math.max(0, capacityCbm - fixedCbm) : null,
+    );
 
+    const orders: TargetOrder[] = [];
+    const clears: DemandRow[] = [];
+    let replacedSkuCount = 0;
+    const replacingSoon = { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 };
+    for (const row of rows) {
+      const qty = plan.qtyByKey.get(row.sku) ?? 0;
       const cbmUnit = row.cbm_per_unit ?? 0;
-      const fullQty = Math.ceil(Math.max(need, moq) / step) * step;
-      if (fullQty > 0) {
-        requiredSkuCount += 1;
-        requiredQty += fullQty;
-        requiredCbm += fullQty * cbmUnit;
+      const hadQty = existingQtyInContainer(row).qty > 0;
+      if (hadQty) replacedSkuCount += 1;
+      if (row.replacing_soon_days != null) replacingSoon.skuCount += 1;
+      if (qty <= 0) {
+        if (hadQty) clears.push(row);
+        continue;
       }
-
-      const remainingCbm = capacityMode === "fit" ? capacityCbm - usedCbm : Number.POSITIVE_INFINITY;
-      if (remainingCbm <= 0) continue;
-
-      let qty = fullQty;
-      if (capacityMode === "fit" && qty * cbmUnit > remainingCbm) {
-        const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
-        if (maxQty < moq) continue;
-        qty = maxQty;
-      }
-      if (qty <= 0) continue;
-
-      usedCbm += qty * cbmUnit;
       orders.push({ row, qty, cbmUnit });
       if (row.replacing_soon_days != null) {
         replacingSoon.orderedSkuCount += 1;
@@ -7233,20 +7284,24 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     }
 
     const totalQty = orders.reduce((sum, order) => sum + order.qty, 0);
-    const totalCbm = orders.reduce((sum, order) => sum + order.qty * order.cbmUnit, 0);
+    const totalCbm = fixedCbm + orders.reduce((sum, order) => sum + order.qty * order.cbmUnit, 0);
     return {
       orders,
+      clears,
+      replacedSkuCount,
       skuCount: orders.length,
       totalQty,
       totalCbm,
       capacityCbm,
+      fixedCbm,
       excessCbm: Math.max(0, totalCbm - capacityCbm),
-      requiredSkuCount,
-      requiredQty,
-      requiredCbm,
+      requiredSkuCount: plan.required.skuCount,
+      requiredQty: plan.required.qty,
+      requiredCbm: fixedCbm + plan.required.cbm,
+      targetScale: plan.targetScale,
       replacingSoon,
     };
-  }, [chainMap, containers, seasonalFactors, targetCandidateRows]);
+  }, [chainMap, containers, data.rows, qtyOverrides, seasonalFactors, targetCandidateRows]);
 
   const applyTargetOrders = useCallback((container: ContainerMeta, preview: TargetOrderPreview): void => {
     if (!canEditPlanning) return;
@@ -7258,8 +7313,20 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           avail_qty: qty,
           cbm: qty * cbmUnit,
           cbm_unit: cbmUnit,
-          item_id: row.containers?.[container.name]?.item_id ?? undefined,
+          item_id: current.get(`${row.sku}::${container.name}`)?.item_id ?? row.containers?.[container.name]?.item_id ?? undefined,
           allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
+        });
+      }
+      for (const row of preview.clears) {
+        const key = `${row.sku}::${container.name}`;
+        next.set(key, {
+          inbound_qty: null,
+          avail_qty: null,
+          cbm: null,
+          cbm_unit: current.get(key)?.cbm_unit ?? row.containers?.[container.name]?.cbm_unit ?? row.cbm_per_unit ?? null,
+          item_id: current.get(key)?.item_id ?? qtyServerItemIdsRef.current.get(key) ?? row.containers?.[container.name]?.item_id ?? undefined,
+          allocated_remaining_qty: null,
+          clear_on_save: true,
         });
       }
       return next;
@@ -7298,7 +7365,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const fixedTargetPreview = useMemo<TargetOrderPreview>(() => {
     if (!fixedTargetDialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
+      return emptyTargetOrderPreview();
     }
     return calculateTargetOrders(
       fixedTargetDialog.container,
@@ -7310,7 +7377,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const backfill3Preview = useMemo<TargetOrderPreview>(() => {
     if (!backfill3Dialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0, replacingSoon: { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 } };
+      return emptyTargetOrderPreview();
     }
     return calculateTargetOrders(
       backfill3Dialog.container,
@@ -7374,11 +7441,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     for (const [key, val] of qtyOverrides.entries()) {
       if (!key.endsWith(`::${container.name}`)) continue;
       const qty = val.inbound_qty ?? 0;
-      if (qty <= 0) continue;
-
       const sku = key.slice(0, -(container.name.length + 2));
       const row = rowsBySku.get(sku);
       const currentQty = row?.containers?.[container.name]?.inbound_qty ?? 0;
+      if (qty <= 0) {
+        if (val.clear_on_save && currentQty > 0) lines.push(`${sku}: ${currentQty} -> 0 (삭제)`);
+        continue;
+      }
       const cbmUnit = val.cbm_unit ?? row?.cbm_per_unit ?? 0;
       const cbm = val.cbm ?? qty * cbmUnit;
       const delta = qty - currentQty;
@@ -7412,31 +7481,53 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     let saved = false;
     try {
       const items: Array<{ sku: string; qty: number }> = [];
+      // Quantities an automatic order calculation cleared. On the live
+      // container the stored item is removed; on a scenario tab it becomes an
+      // explicit 0 ("ship none of this here").
+      const clears: Array<{ sku: string; itemId?: number }> = [];
       for (const [key, val] of qtyOverrides.entries()) {
         if (!key.endsWith(`::${container.name}`)) continue;
         const sku = key.slice(0, -(container.name.length + 2));
         if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
+        else if (val.clear_on_save) clears.push({ sku, itemId: val.item_id ?? qtyServerItemIdsRef.current.get(key) });
       }
-      if (items.length === 0) return;
-      const response = scenario
-        ? await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+      if (items.length === 0 && clears.length === 0) return;
+      if (scenario) {
+        const response = await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
           method: "PUT",
           headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
           body: JSON.stringify({
-            items: items.map((item) => ({
+            items: [...items, ...clears.map((clear) => ({ sku: clear.sku, qty: 0 }))].map((item) => ({
               container_id: container.container_id,
               master_sku: item.sku,
               qty: item.qty,
             })),
           }),
-        })
-        : await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-          body: JSON.stringify({ items }),
         });
-      const result = await response.json().catch(() => null) as { success?: boolean } | null;
-      saved = response.ok && result?.success === true;
+        const result = await response.json().catch(() => null) as { success?: boolean } | null;
+        saved = response.ok && result?.success === true;
+      } else {
+        saved = true;
+        if (items.length > 0) {
+          const response = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+            body: JSON.stringify({ items }),
+          });
+          const result = await response.json().catch(() => null) as { success?: boolean } | null;
+          saved = response.ok && result?.success === true;
+        }
+        for (const clear of saved ? clears : []) {
+          if (!clear.itemId) continue;
+          const response = await fetch(apiPath(`/api/planning/containers/items/${clear.itemId}`), {
+            method: "DELETE",
+            headers: DEMAND_PLANNING_MUTATION_HEADER,
+          });
+          const result = await response.json().catch(() => null) as { success?: boolean } | null;
+          if (!response.ok || result?.success !== true) { saved = false; break; }
+          qtyServerItemIdsRef.current.delete(`${clear.sku}::${container.name}`);
+        }
+      }
     } finally {
       setSavingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
       if (saved) {
