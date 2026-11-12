@@ -6,6 +6,7 @@ import {
   type ExcelSkuRow,
 } from "@/lib/sku-master/repository";
 import { normalizeMasterSku } from "@/lib/planning/master-sku";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { logAudit } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { NotFoundError, ValidationError } from "@/lib/errors";
@@ -165,6 +166,8 @@ export const SkuMasterService = {
     });
 
     if (!found) throw new NotFoundError("SKU not found");
+    // Status, MOQ, CBM and Type all feed the planning grid.
+    await invalidatePlanningDashboardCache();
 
     const session = await auth();
     void logAudit({
@@ -269,6 +272,7 @@ export const SkuMasterService = {
     }
 
     const { updated, inserted } = await SkuMasterRepository.applyExcelImport(rows);
+    await invalidatePlanningDashboardCache();
     return { imported: rows.length, upserted: updated + inserted, updated, inserted };
   },
 
@@ -276,6 +280,7 @@ export const SkuMasterService = {
     if (!masterSku) throw new ValidationError("masterSku is required");
 
     await SkuMasterRepository.deactivateProduct(masterSku);
+    await invalidatePlanningDashboardCache();
 
     const session = await auth();
     void logAudit({

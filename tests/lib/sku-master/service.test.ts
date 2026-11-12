@@ -22,6 +22,8 @@ vi.mock("@/lib/sku-master/repository", async () => {
 });
 vi.mock("@/lib/audit", () => ({ logAudit: logAuditMock }));
 vi.mock("@/lib/auth", () => ({ auth: authMock }));
+const invalidateDashboardMock = vi.fn();
+vi.mock("@/lib/planning/dashboard-cache", () => ({ invalidatePlanningDashboardCache: invalidateDashboardMock }));
 
 const { SkuMasterService } = await import("@/lib/sku-master/service");
 
@@ -280,5 +282,22 @@ describe("SkuMasterService.deactivateProduct", () => {
 
     expect(repositoryMock.deactivateProduct).toHaveBeenCalledWith("SKU-1");
     expect(logAuditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "delete", entityId: "SKU-1", ip: "9.9.9.9" }));
+    expect(invalidateDashboardMock).toHaveBeenCalled();
+  });
+});
+
+describe("SkuMasterService status change reaches Demand Planning", () => {
+  it("clears the planning dashboard cache after setting a SKU inactive via Edit", async () => {
+    repositoryMock.updateProduct.mockResolvedValue(true);
+    await SkuMasterService.updateProduct({ masterSku: "SKU-1", status: "inactive" } as never, null);
+    expect(invalidateDashboardMock).toHaveBeenCalled();
+  });
+
+  it("does not clear the cache when the SKU was not found", async () => {
+    repositoryMock.updateProduct.mockResolvedValue(false);
+    await expect(
+      SkuMasterService.updateProduct({ masterSku: "SKU-1", status: "inactive" } as never, null)
+    ).rejects.toThrow(NotFoundError);
+    expect(invalidateDashboardMock).not.toHaveBeenCalled();
   });
 });

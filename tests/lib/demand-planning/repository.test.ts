@@ -67,6 +67,17 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     expect(sql).toContain("p.total_avg_curr_override::float8");
   });
 
+  it("drops SKUs marked inactive in SKU Master, with or without a category filter", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCodes: ["CC"], inboundStatuses: "('shipped')" });
+    const [unfiltered, params] = primaryQueryMock.mock.calls[0];
+    const [filtered] = primaryQueryMock.mock.calls[1];
+    expect(unfiltered).toContain("WHERE p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status\n");
+    expect(params).toEqual([]);
+    expect(filtered).toContain("WHERE p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status AND (UPPER(p.category_code) = ANY($1::text[])");
+  });
+
   it("uses fc_stats directly for SC category in link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["SC"], inboundStatuses: "('shipped')" });

@@ -125,7 +125,17 @@ function productCategoryWhere(categoryCodes: DashboardFilters["categoryCodes"]):
   const fallback = patterns.length
     ? ` OR (p.category_code IS NULL AND (${patterns.join(" OR ")}))`
     : "";
-  return `WHERE (UPPER(p.category_code) = ANY($1::text[])${fallback})`;
+  return `(UPPER(p.category_code) = ANY($1::text[])${fallback})`;
+}
+
+// SKUs set to Inactive in SKU Master are dropped from the planning grid, and so
+// from every automatic order calculation, which only sees the grid's rows. A SKU
+// with no fc_products row at all is not inactive and stays.
+const EXCLUDE_INACTIVE_PRODUCT = `p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status`;
+
+function statsRowsWhere(categoryCodes: DashboardFilters["categoryCodes"]): string {
+  const conditions = [EXCLUDE_INACTIVE_PRODUCT, productCategoryWhere(categoryCodes)].filter(Boolean);
+  return `WHERE ${conditions.join(" AND ")}`;
 }
 
 // Which velocity lane a category reads from in link mode: Car Cover, Floor Mat
@@ -317,7 +327,7 @@ export const DemandPlanningRepository = {
         COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST,
         c.id DESC
     ) completed ON completed.master_sku = s.master_sku
-    ${productCategoryWhere(categoryCodes)}
+    ${statsRowsWhere(categoryCodes)}
     ORDER BY s.master_sku
   `, categoryParams);
     return result.rows;
