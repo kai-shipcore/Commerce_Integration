@@ -1,9 +1,12 @@
+import type { FloorMatSet } from "@/lib/planning/floor-mat-sets";
+
 export type CategoryFilter = "sc" | "cc" | "fm" | "ac" | "swc";
 export type BaseCategoryFilter = "sc" | "cc" | "fm" | "ac";
 export type UrgencyFilter = "crit" | "warn" | "bo" | "over";
 export type UrgencyStatus = "crit" | "warn" | "ok" | "over";
 export type ColumnGroupKey =
   | "fix"
+  | "fmset"
   | "stock"
   | "wsales"
   | "esales"
@@ -144,6 +147,19 @@ export interface DemandRow {
   /** Successor SKU noted on the Replacing Soon page (informational). */
   replacing_soon_replacement_sku?: string | null;
   replacing_soon_note?: string | null;
+  /**
+   * Floor mat set links from the SKU Master page: the 1st / 2nd Row component
+   * SKUs of a Master Set SKU, its 3rd Row SKUs, Pre-Order flags and old set
+   * SKUs. Absent on SKUs with nothing recorded.
+   */
+  fm_set?: FloorMatSet | null;
+  /**
+   * Sets a floor mat master can assemble from loose 1st / 2nd Row stock on
+   * hand ("Current pairs allocated"). Already included in total_stock, and
+   * through it in sod. Absent when zero, and on a historical (As of) view,
+   * where stock by warehouse is not known.
+   */
+  loose_sets_on_hand?: number;
   oos_days_90d: number | null;
   oos_lost_demand_90d: number | null;
   cbm_per_unit?: number;

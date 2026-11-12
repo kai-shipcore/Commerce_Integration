@@ -32,6 +32,7 @@ import {
   getPlanningAnchor,
   WRAPPING_ROW_COLUMN_IDS,
   columnAppliesToCategories,
+  conSubColumnAppliesToCategories,
   matchesAnyLogicalColumnId,
   matchesSalesStatusSelection,
   matchesUrgencySelection,
@@ -57,6 +58,13 @@ import {
   sheetContainerBackorderQty,
   sheetContainerEstimatedSales,
 } from "@/lib/planning/forecast-calculations";
+import {
+  buildFloorMatView,
+  looseSetsOrdered,
+  looseSetsOrderedIsSplit,
+  setFloorMatView,
+  type FloorMatView,
+} from "@/lib/planning/floor-mat-dashboard";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
@@ -138,6 +146,9 @@ const EMPTY_FILTER_EDIT_EXCEPTIONS: ReadonlyMap<string, ReadonlySet<string>> = n
 const CON_QTY_COLUMN_ID = "inb_qty";
 const CON_QTY_TINT = "#CFE8F7";
 const CON_QTY_RAIL = "1px solid #5B8FC9";
+// Loose Sets Ordered when some of the sets gained in that container are split
+// between warehouses and need consolidating before they can ship.
+const LOOSE_SPLIT_FILL = "#FED7AA";
 const SELECTED_CELL_FILL = "#DBEAFE";
 
 type QtyOverride = {
@@ -1351,7 +1362,12 @@ function computeContainerChain(
     // let a cleared cell fall back to the DB qty, and Avail / Carry Over /
     // Inv. Life kept the old number until the page was reloaded.
     const override = overrides.get(key);
-    const qty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
+    const ownQty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
+    // A floor mat master also gains the sets its 1st / 2nd Row components
+    // arriving in this container make possible (Loose Sets Ordered). They
+    // count as inflow exactly like the master's own Con. Qty. Zero for every
+    // other row. Sets from stock on hand are already in total_stock.
+    const qty = ownQty + looseSetsOrdered(row.sku, container.name);
     const eta = container.eta ?? getPlanningAnchor();
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
@@ -4927,7 +4943,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
   // CON_SUBCOLS is already in rendered order (CBM first), so hidden-run
   // detection below can index straight into it.
-  const conCandidates = CON_SUBCOLS;
+  const conCandidates = useMemo(
+    () => CON_SUBCOLS.filter((column) => conSubColumnAppliesToCategories(column.id, categoryFilter)),
+    [categoryFilter],
+  );
 
   // Sub-column visibility (`con:<id>`) has no per-container override, so this
   // is computed once and reused identically inside every container's own
@@ -5132,6 +5151,21 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerDetailsLoaded, scenario?.id, scenarioOverlay]);
 
+  // Floor mat set pairing for the quantities on screen, edits and scenario
+  // overlays included. Published for the column definitions and for
+  // computeContainerChain during render, the way setPlanningAnchor() is: both
+  // read it synchronously while producing this render's values.
+  const floorMatView = useMemo(() => buildFloorMatView(
+    data.rows,
+    containers.slice(1).map((container) => container.name),
+    (row, containerName) => {
+      const override = qtyOverrides.get(`${row.sku}::${containerName}`);
+      return override !== undefined ? override.inbound_qty ?? 0 : row.containers?.[containerName]?.inbound_qty ?? 0;
+    },
+  ), [containers, data.rows, qtyOverrides]);
+  setFloorMatView(floorMatView);
+  const lastChainedFloorMatViewRef = useRef<FloorMatView | null>(null);
+
   useEffect(() => {
     // When container columns are requested, the summary has no quantities.
     // Wait for details instead of calculating every SKU twice on first load.
@@ -5155,16 +5189,34 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // each keystroke made Con. Qty edits increasingly slow on large datasets.
   useEffect(() => {
     const previous = lastChainedQtyOverridesRef.current;
-    if (previous === qtyOverrides) return;
+    const previousView = lastChainedFloorMatViewRef.current;
+    if (previous === qtyOverrides && previousView === floorMatView) return;
 
     const changedSkus = new Set<string>();
-    for (const [key, value] of qtyOverrides) {
-      if (previous.get(key) !== value) changedSkus.add(key.slice(0, key.indexOf("::")));
+    if (previous !== qtyOverrides) {
+      for (const [key, value] of qtyOverrides) {
+        if (previous.get(key) !== value) changedSkus.add(key.slice(0, key.indexOf("::")));
+      }
+      for (const key of previous.keys()) {
+        if (!qtyOverrides.has(key)) changedSkus.add(key.slice(0, key.indexOf("::")));
+      }
     }
-    for (const key of previous.keys()) {
-      if (!qtyOverrides.has(key)) changedSkus.add(key.slice(0, key.indexOf("::")));
+    // Editing a 1st / 2nd Row component's quantity changes the sets its
+    // masters gain, and with them those masters' chains, although their own
+    // quantities did not change.
+    if (previousView !== floorMatView) {
+      for (const [sku, master] of floorMatView?.result.masters ?? []) {
+        const before = previousView?.result.masters.get(sku);
+        if (!before || before.added.length !== master.added.length || before.added.some((value, index) => value !== master.added[index])) {
+          changedSkus.add(sku);
+        }
+      }
+      for (const sku of previousView?.result.masters.keys() ?? []) {
+        if (!floorMatView?.result.masters.has(sku)) changedSkus.add(sku);
+      }
     }
     lastChainedQtyOverridesRef.current = qtyOverrides;
+    lastChainedFloorMatViewRef.current = floorMatView;
     if (!changedSkus.size) return;
 
     const rowsBySku = new Map(data.rows.map((row) => [row.sku, row]));
@@ -5177,14 +5229,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       chainMapRef.current = next;
       return next;
     });
-  }, [containers, data.rows, qtyOverrides, seasonalFactors]);
+  }, [containers, data.rows, floorMatView, qtyOverrides, seasonalFactors]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
     if (!api) return;
     api.refreshCells({ force: true });
     api.refreshHeader();
-  }, [cbmOverrides, cellColors, chainMap, columnColors, qtyOverrides, rowOverrides]);
+  }, [cbmOverrides, cellColors, chainMap, columnColors, floorMatView, qtyOverrides, rowOverrides]);
 
   useEffect(() => {
     columnWidthsRef.current = columnWidths;
@@ -8014,6 +8066,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 ? SELECTED_CELL_FILL
                 : conditionalFormat?.fillColor
                   ? conditionalFormat.fillColor
+                : column.id === "loose" && params.data && !baseline && looseSetsOrderedIsSplit(params.data.sku, container.name)
+                  ? LOOSE_SPLIT_FILL
                 : cellColors[key]
                   ?? columnColors[physicalColumnId]?.cell
                   ?? columnColors[sharedColumnId]?.cell

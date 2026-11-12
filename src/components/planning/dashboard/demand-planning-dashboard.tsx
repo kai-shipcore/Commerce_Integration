@@ -152,6 +152,7 @@ const AgDemandPlanningGrid = dynamic(
 
 const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   fix: true,
+  fmset: true,
   stock: true,
   wsales: true,
   esales: true,

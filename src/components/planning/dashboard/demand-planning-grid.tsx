@@ -18,6 +18,7 @@ import {
   getPlanningAnchor,
   clampColumnWidth,
   columnAppliesToCategories,
+  conSubColumnAppliesToCategories,
   daysTo,
   isResizableColumnId,
   checkedBaseCategories,
@@ -402,7 +403,7 @@ export function DemandPlanningGrid({
   const [cbmSavingSku, setCbmSavingSku] = useState<string | null>(null);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const visSubCols = CON_SUBCOLS.filter((sc) =>
-    columnVis[`con:${sc.id}`] !== false
+    columnVis[`con:${sc.id}`] !== false && conSubColumnAppliesToCategories(sc.id, categoryFilter)
   );
 
   const containerCbmTotals = useMemo(() => {

@@ -9,6 +9,9 @@ import {
   MIN_HEADER_HEIGHT,
   MIN_ROW_HEIGHT,
   WRAPPING_ROW_COLUMN_IDS,
+  CON_SUBCOLS,
+  FLOOR_MAT_COLUMN_IDS,
+  conSubColumnAppliesToCategories,
   columnAppliesToCategories,
   ensureAdditionalNotesInColumnOrder,
   normalizeDashboardFilters,
@@ -46,20 +49,56 @@ describe("FBA sales columns", () => {
   it("inserts new FBA columns after East columns in an existing saved order", () => {
     const migrated = ensureAdditionalNotesInColumnOrder(["sku", "e90", "epre", "wavg_p"]);
     expect(migrated).toEqual([
-      "sku", "e90", "epre", "f90", "f60", "f30", "f15", "f7", "fpre", "wavg_p",
+      "sku", ...FLOOR_MAT_COLUMN_IDS, "e90", "epre", "f90", "f60", "f30", "f15", "f7", "fpre", "wavg_p",
     ]);
   });
 
   it("inserts the Dream Trans and Linkone columns after the last original warehouse column", () => {
     const migrated = ensureAdditionalNotesInColumnOrder(["sku", "fullerton", "canary", "ttm", "ttm_jeff", "west", "east"]);
     expect(migrated).toEqual([
-      "sku", "fullerton", "canary", "ttm", "ttm_jeff", "dream_trans", "linkone", "west", "east",
+      "sku", ...FLOOR_MAT_COLUMN_IDS, "fullerton", "canary", "ttm", "ttm_jeff", "dream_trans", "linkone", "west", "east",
     ]);
   });
 
   it("leaves an order that already places the new warehouse columns alone", () => {
-    const order = ["sku", "dream_trans", "fullerton", "linkone", "ttm_jeff"];
+    const order = ["sku", ...FLOOR_MAT_COLUMN_IDS, "dream_trans", "fullerton", "linkone", "ttm_jeff"];
     expect(ensureAdditionalNotesInColumnOrder(order)).toEqual(order);
+  });
+});
+
+describe("floor mat columns", () => {
+  it("slots the set columns after Master SKU and Loose Sets On Hand before Total Stock in a saved order", () => {
+    expect(ensureAdditionalNotesInColumnOrder(["cont_info", "sku", "west", "total", "transit"])).toEqual([
+      "cont_info", "sku", ...FLOOR_MAT_COLUMN_IDS, "west", "loose_on_hand", "total", "transit",
+    ]);
+  });
+
+  it("keeps a saved order that already has them", () => {
+    const order = ["sku", "fm_pairs", ...FLOOR_MAT_COLUMN_IDS.filter((id) => id !== "fm_pairs"), "loose_on_hand", "total"];
+    expect(ensureAdditionalNotesInColumnOrder(order)).toEqual(order);
+  });
+
+  it("shows the set columns and container sub-columns for Floor Mat only", () => {
+    for (const id of [...FLOOR_MAT_COLUMN_IDS, "loose_on_hand"]) {
+      expect(ALL_COLS.some((column) => column.id === id), id).toBe(true);
+      expect(columnAppliesToCategories(id, ["fm"]), id).toBe(true);
+      expect(columnAppliesToCategories(id, ["cc", "fm"]), id).toBe(true);
+      expect(columnAppliesToCategories(id, ["sc"]), id).toBe(false);
+      expect(columnAppliesToCategories(id, []), id).toBe(false);
+    }
+    for (const id of ["loose", "fm_1st", "fm_2nd", "fm_after"]) {
+      expect(CON_SUBCOLS.some((column) => column.id === id), id).toBe(true);
+      expect(conSubColumnAppliesToCategories(id, ["fm"]), id).toBe(true);
+      expect(conSubColumnAppliesToCategories(id, ["sc"]), id).toBe(false);
+    }
+    // Every other sub-column is unaffected.
+    expect(conSubColumnAppliesToCategories("avail", ["sc"])).toBe(true);
+  });
+
+  it("puts Loose Sets Ordered between Rem. Qty and Open Orders, as on the planning sheet", () => {
+    const ids = CON_SUBCOLS.map((column) => column.id);
+    expect(ids.indexOf("loose")).toBe(ids.indexOf("remaining") + 1);
+    expect(ids.indexOf("loose")).toBeLessThan(ids.indexOf("oo"));
   });
 });
 

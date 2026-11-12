@@ -48,6 +48,8 @@ import { VelocityService, SyncInProgressError } from "@/lib/velocity/service";
 import { ServiceUnavailableError } from "@/lib/errors";
 import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow, type InventorySnapshotRow } from "@/lib/demand-planning/repository";
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
+import { FloorMatSetRepository } from "@/lib/sku-master/floor-mat-set-repository";
+import { buildFloorMatView } from "@/lib/planning/floor-mat-dashboard";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerRowData, DemandPlanningData, DemandPlanningContainerDetails, DemandRow } from "@/types/demand-planning";
 import { mapContainerDetails } from "./container-details";
@@ -422,6 +424,21 @@ export const DemandPlanningService = {
       }
     }
 
+    // S.O.D. from a stock figure, shared by the row build below and the floor
+    // mat pass after it, which raises Total Stock and has to redo both.
+    const asOfMs = new Date(todayStr).getTime();
+    const sodDateFor = (totalStock: number, rate: number): string | null => {
+      if (!rate) return null;
+      const d = new Date(asOfMs);
+      d.setDate(d.getDate() + Math.floor(totalStock / rate));
+      return d.toISOString().slice(0, 10);
+    };
+    const sodDaysRawFor = (totalStock: number, back: number, rawAvgReal: number): number =>
+      back < 0 ? -1 : rawAvgReal > 0 ? Math.floor(totalStock / rawAvgReal) : 9999;
+    // The two rates S.O.D. is measured with, as the row build used them
+    // (before the 2-decimal rounding the row itself carries).
+    const sodRatesBySku = new Map<string, { rawAvgReal: number; avgReal: number }>();
+
     const rows: DemandRow[] = rowsResult.map((r) => {
       const masterSku = r.sku as string;
       const rowSku = masterSku;
@@ -561,21 +578,10 @@ export const DemandPlanningService = {
       const baselineBackorder = sheetBaselineBackorderQty(masterSku, availQty, total_30d);
       const dailyRate = total_avg_curr;
       const invLife = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
-      const asOfMs = new Date(todayStr).getTime();
       const rawAvgReal = r.total_avg_real as number;
-      const sod_days_raw = back < 0
-        ? -1
-        : rawAvgReal > 0
-          ? Math.floor(totalStock / rawAvgReal)
-          : 9999;
-      const sod = (() => {
-        const rate = total_avg_real;
-        if (!rate) return null;
-        const days = Math.floor(totalStock / rate);
-        const d = new Date(asOfMs);
-        d.setDate(d.getDate() + days);
-        return d.toISOString().slice(0, 10);
-      })();
+      sodRatesBySku.set(masterSku, { rawAvgReal, avgReal: total_avg_real });
+      const sod_days_raw = sodDaysRawFor(totalStock, back, rawAvgReal);
+      const sod = sodDateFor(totalStock, total_avg_real);
       const planSod = invLife !== null ? addSheetDays(todayStr, invLife) : null;
 
       if (!query.rawContainers) {
@@ -717,6 +723,33 @@ export const DemandPlanningService = {
         containers: query.includeContainers ? containersObj : {},
       } as DemandRow;
     });
+
+    // ── Floor mat sets ───────────────────────────────────────────────────
+    //
+    // A floor mat Master Set SKU can be assembled from loose 1st / 2nd Row
+    // components. The sets that current component stock makes ("Loose Sets On
+    // Hand") count as the master's own stock, so they are added to Total Stock
+    // here and S.O.D. is redone from the new total. Sets that incoming
+    // containers will make depend on the container quantities on screen and
+    // are worked out in the grid (see src/lib/planning/floor-mat-dashboard.ts).
+    const floorMatRows = rows.filter((row) => row.category_code === "FM");
+    if (floorMatRows.length > 0) {
+      const sets = await FloorMatSetRepository.findBySkus(floorMatRows.map((row) => row.sku));
+      for (const row of floorMatRows) {
+        const set = sets.get(row.sku);
+        if (set) row.fm_set = set;
+      }
+      const view = sets.size > 0 ? buildFloorMatView(rows, [], () => 0) : null;
+      for (const row of view ? floorMatRows : []) {
+        const onHand = view!.result.masters.get(row.sku)?.pairs[0] ?? 0;
+        if (onHand <= 0) continue;
+        row.loose_sets_on_hand = onHand;
+        row.total_stock += onHand;
+        const rates = sodRatesBySku.get(row.sku);
+        row.sod_days_raw = sodDaysRawFor(row.total_stock, row.back, rates?.rawAvgReal ?? 0);
+        row.sod = sodDateFor(row.total_stock, rates?.avgReal ?? 0);
+      }
+    }
 
     const data: DemandPlanningData = {
       containers, rows, pinned_rows: [], last_sync: lastSync,

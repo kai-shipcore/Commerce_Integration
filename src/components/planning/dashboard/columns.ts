@@ -7,9 +7,20 @@ import {
 } from "@/lib/planning/column-filter";
 import { normalizeGridSort, type GridSort } from "@/lib/planning/grid-sort";
 import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
+import { formatPreOrder } from "@/lib/planning/floor-mat-sets";
+import { formatSplit, type MasterPairing, type PairingLocation } from "@/lib/planning/floor-mat-pairing";
+import {
+  componentPairingLines,
+  floorMatMaster,
+  floorMatTotalStock,
+  looseSetsOrdered,
+  pairsAfter,
+  usableArrival,
+} from "@/lib/planning/floor-mat-dashboard";
 
 export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
+  "t-fmset":   "#F4FBF4",
   "t-wsales":  "#F5FBF7",
   "t-esales":  "#FAF5FF",
   "t-fbasales":"#F3F8FF",
@@ -25,6 +36,7 @@ export const TINT_COLORS: Record<string, string> = {
 export const GROUP_HEADER_COLORS: Record<string, string> = {
   "gh-fix":    "#1E1C19",
   "gh-stock":  "#1A3555",
+  "gh-fmset":  "#1F3A24",
   "gh-wsales": "#153028",
   "gh-esales": "#2A1E42",
   "gh-fbasales":"#182A46",
@@ -37,6 +49,7 @@ export const GROUP_HEADER_COLORS: Record<string, string> = {
 
 export const GROUP_LABELS: Record<string, string> = {
   fix:    "Basic Info",
+  fmset:  "Floor Mat Sets",
   stock:  "Inventory",
   wsales: "West FBM Sales",
   esales: "East FBM Sales",
@@ -51,6 +64,7 @@ export const GROUP_LABELS: Record<string, string> = {
 };
 
 export const GROUP_BTN_COLORS: Record<string, string> = {
+  fmset:  "#1F3A24",
   wsales: "#153028",
   esales: "#2A1E42",
   fbasales: "#182A46",
@@ -195,6 +209,27 @@ function warehouseCell(v: number | null | undefined): string | number {
   return v ?? "\u2014";
 }
 
+
+/** Several values in one cell, one per line (a master's 3rd Row SKUs and the
+ *  stock / Pre-Order that goes with each). The lines show once the row is
+ *  taller than the default; at the default height the first one does. */
+function cellLines(values: string[]): CellContent {
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0];
+  return { html: values.map(escapeHtml).join("<br>") };
+}
+
+/** A pairing figure, blank for rows that are not a pairable master. */
+function pairingCell(row: DemandRow, pick: (master: MasterPairing) => number): number | string {
+  const master = floorMatMaster(row.sku);
+  return master?.pairable ? pick(master) : "";
+}
+
+function splitCell(row: DemandRow, location: PairingLocation): string {
+  const master = floorMatMaster(row.sku);
+  return master ? formatSplit(master.split[location]) ?? "" : "";
+}
+
 export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
@@ -207,6 +242,38 @@ export const ALL_COLS: ColDef[] = [
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
+  // Floor mat sets: a master's component links and how its loose 1st / 2nd
+  // Row stock pairs up. Floor Mat only (CATEGORY_SCOPED_COLUMNS). The link
+  // columns come from SKU Master; the rest from the pairing in
+  // src/lib/planning/floor-mat-pairing.ts, read through floorMatMaster().
+  { id: "fm_po12",        grp: "fmset", label: "1~2열\nPre-Order", w: 58,  align: "ctr",  tint: "t-fmset", gh: "gh-fmset", val: (r) => formatPreOrder(r.fm_set?.preOrder12) },
+  { id: "fm_po3",         grp: "fmset", label: "3열\nPre-Order",   w: 58,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => {
+    const set = r.fm_set;
+    if (!set) return "";
+    // One value per 3rd Row SKU, on the same line as that SKU.
+    return set.thirdRows.length > 0 ? cellLines(set.thirdRows.map((row) => formatPreOrder(row.preOrder) || "—")) : formatPreOrder(set.preOrder3);
+  } },
+  { id: "fm_front",       grp: "fmset", label: "Front\n(1st Row)", w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.frontSku ?? "", sortVal: (r) => r.fm_set?.frontSku ?? "" },
+  { id: "fm_front_stock", grp: "fmset", label: "1st Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.frontStock ?? -1 },
+  { id: "fm_rear",        grp: "fmset", label: "Rear\n(2nd Row)",  w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.rearSku ?? "", sortVal: (r) => r.fm_set?.rearSku ?? "" },
+  { id: "fm_rear_stock",  grp: "fmset", label: "2nd Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.rearStock ?? -1 },
+  { id: "fm_third",       grp: "fmset", label: "3rd Row",          w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.thirdRows.map((row) => row.sku) ?? []) },
+  { id: "fm_third_stock", grp: "fmset", label: "3rd Row\nStock",   w: 52,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines((r.fm_set?.thirdRows ?? []).map((row) => String(floorMatTotalStock(row.sku) ?? "—"))) },
+  { id: "fm_old",         grp: "fmset", label: "Old Set\nSKU",     w: 150, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.oldSetSkus ?? []) },
+  { id: "fm_pairs",       grp: "fmset", label: "Current\nPairs",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", bold: true, val: (r) => pairingCell(r, (m) => m.pairs[0]), sortVal: (r) => floorMatMaster(r.sku)?.pairs[0] ?? -1 },
+  { id: "fm_full_p",      grp: "fmset", label: "Full Sets\nPrimary", w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.primary || "" },
+  { id: "fm_full_d",      grp: "fmset", label: "Full Sets\nDtrans",  w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.dtrans || "" },
+  { id: "fm_full_e",      grp: "fmset", label: "Full Sets\nEast",    w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.east || "" },
+  { id: "fm_split_p",     grp: "fmset", label: "Set Split\nPrimary", w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "primary") },
+  { id: "fm_split_d",     grp: "fmset", label: "Set Split\nDtrans",  w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "dtrans") },
+  { id: "fm_split_e",     grp: "fmset", label: "Set Split\nEast",    w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "east") },
+  { id: "fm_front_need",  grp: "fmset", label: "Front units\nneeded", w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontNeeded ?? "" },
+  { id: "fm_rear_need",   grp: "fmset", label: "Rear units\nneeded",  w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearNeeded ?? "" },
+  { id: "fm_gap",         grp: "fmset", label: "Gap",              w: 40,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.gap ?? "" },
+  { id: "fm_lost_1",      grp: "fmset", label: "Lost\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostFront) },
+  { id: "fm_lost_2",      grp: "fmset", label: "Lost\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostRear) },
+  { id: "fm_free_1",      grp: "fmset", label: "Free\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeFront) },
+  { id: "fm_free_2",      grp: "fmset", label: "Free\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeRear) },
   { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
   { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },
@@ -215,6 +282,8 @@ export const ALL_COLS: ColDef[] = [
   { id: "linkone",   grp: "stock", label: "Linkone\nStock",   w: 60,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.linkone_available_stock) },
   { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.west_available_stock) },
   { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.east_available_stock) },
+  // Sets a master can assemble from loose components on hand. Counted in Total Stock.
+  { id: "loose_on_hand", grp: "stock", label: "Loose Sets\nOn Hand", w: 64, align: "num", tint: "t-stock", gh: "gh-stock", val: (r) => r.loose_sets_on_hand ?? (r.fm_set?.rearSku ? 0 : ""), sortVal: (r) => r.loose_sets_on_hand ?? 0 },
   { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock ?? 0, bold: true },
   { id: "transit",   grp: "stock", label: "Transit\nStock",   w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.transit_stock || 0 },
   // West Sales
@@ -288,7 +357,7 @@ export const ALL_COLS: ColDef[] = [
 // ── Column visibility / toolbar shared exports ───────────────────────────────
 
 export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "stock","wsales","esales","fbasales","wavg","eavg","fba","s30","tavg","oos","inb","con",
+  "fmset","stock","wsales","esales","fbasales","wavg","eavg","fba","s30","tavg","oos","inb","con",
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
@@ -298,6 +367,7 @@ export const COMPACT_COLUMN_IDS = new Set<string>([
 
 export const GROUP_BTN_LABELS: Record<string, string> = {
   wsales: "📈 West Sales",
+  fmset:  "Floor Mat Sets",
   stock:  "Inventory",
   esales: "📈 East Sales",
   fbasales: "📈 FBA Sales",
@@ -319,9 +389,31 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
  *  1, so everywhere else the column would be a stripe of ones. Read-only here
  *  — fc_products.case_qty is edited on the SKU Master page, which stays the
  *  one place it changes. */
+export const FLOOR_MAT_COLUMN_IDS = [
+  "fm_po12", "fm_po3", "fm_front", "fm_front_stock", "fm_rear", "fm_rear_stock", "fm_third", "fm_third_stock", "fm_old",
+  "fm_pairs", "fm_full_p", "fm_full_d", "fm_full_e", "fm_split_p", "fm_split_d", "fm_split_e",
+  "fm_front_need", "fm_rear_need", "fm_gap", "fm_lost_1", "fm_lost_2", "fm_free_1", "fm_free_2",
+] as const;
+
 const CATEGORY_SCOPED_COLUMNS: Record<string, CategoryFilter[]> = {
   qty_ctn: ["cc"],
+  // Set links and pairing only exist for floor mats.
+  ...Object.fromEntries(FLOOR_MAT_COLUMN_IDS.map((id) => [id, ["fm"] as CategoryFilter[]])),
+  loose_on_hand: ["fm"],
 };
+
+/** The same idea for the sub-columns inside each container block. */
+const CATEGORY_SCOPED_CON_SUBCOLS: Record<string, CategoryFilter[]> = {
+  loose: ["fm"],
+  fm_1st: ["fm"],
+  fm_2nd: ["fm"],
+  fm_after: ["fm"],
+};
+
+export function conSubColumnAppliesToCategories(subColumnId: string, categories: CategoryFilter[]): boolean {
+  const scope = CATEGORY_SCOPED_CON_SUBCOLS[subColumnId];
+  return !scope || scope.some((category) => categories.includes(category));
+}
 
 export function columnAppliesToCategories(columnId: string, categories: CategoryFilter[]): boolean {
   const scope = CATEGORY_SCOPED_COLUMNS[columnId];
@@ -700,6 +792,9 @@ export function loadSavedRowHeights(): RowHeights {
  *  otherwise just add empty space above and below the same truncated string. */
 export const WRAPPING_ROW_COLUMN_IDS = [
   "cont_info", "sku", "inb_lst", "workflow_note", "workflow_note_2", "workflow_note_3",
+  // Floor mat cells that list one value per 3rd Row SKU / old set SKU. The
+  // Pre-Order and stock ones are left-aligned so each line sits beside its SKU.
+  "fm_po3", "fm_third", "fm_third_stock", "fm_old",
 ] as const;
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
@@ -901,6 +996,25 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
   // otherwise land at the far right of the grid and in a second "Inventory"
   // run at the bottom of the column picker. Slot them after the last of the
   // original four warehouse columns instead.
+  // Floor mat set columns sit between Master SKU and the stock columns, and
+  // Loose Sets On Hand right before Total Stock, in an order saved before
+  // they existed too.
+  const skuAnchor = next.indexOf("sku");
+  if (skuAnchor >= 0) {
+    let insertAt = skuAnchor + 1;
+    for (const columnId of FLOOR_MAT_COLUMN_IDS) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
+    }
+  }
+  if (!next.includes("loose_on_hand") && next.includes("total")) {
+    next.splice(next.indexOf("total"), 0, "loose_on_hand");
+  }
   const warehouseAnchor = Math.max(...["fullerton", "canary", "ttm", "ttm_jeff"].map((id) => next.indexOf(id)));
   if (warehouseAnchor >= 0) {
     let insertAt = warehouseAnchor + 1;
@@ -1115,6 +1229,21 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     const total = (row.remaining ?? 0) + (row.mistake ?? 0);
     return total > 0 ? total : "";
   } },
+  // Floor mat only (CATEGORY_SCOPED_CON_SUBCOLS). On a master row: the sets its
+  // components arriving in this container make possible, which Avail Qty
+  // includes. On a component row with an order here: the masters those units
+  // pair into.
+  { id: "loose",    label: "Loose Sets\nOrdered", w: 76, align: "num", tint: "t-cn", val: (_cd, container, row) => {
+    if (container.status === "baseline") return "";
+    const sets = looseSetsOrdered(row.sku, container.name);
+    if (sets > 0) return sets;
+    return componentPairingLines(row.sku, container.name).join(", ");
+  } },
+  // Component units arriving here that can pair, after the component's own backorder.
+  { id: "fm_1st",   label: "1st\nUsable",  w: 48, align: "num", tint: "t-cn", val: (_cd, container, row) => usableArrival(row.sku, container.name, "front") ?? "" },
+  { id: "fm_2nd",   label: "2nd\nUsable",  w: 48, align: "num", tint: "t-cn", val: (_cd, container, row) => usableArrival(row.sku, container.name, "rear") ?? "" },
+  // Cumulative pairs once this container has arrived; under Base, the current pairs.
+  { id: "fm_after", label: "Pairs\nAfter", w: 48, align: "num", tint: "t-cn", val: (_cd, container, row) => pairsAfter(row.sku, container.name, container.status === "baseline") ?? "" },
   { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => Math.round(cd.open_orders || 0) },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? Math.round(cd.avail_qty) : "" },
   { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => Math.round(cd.est_sales ?? 0) || 0 },

@@ -45,6 +45,10 @@ vi.mock("@/lib/demand-planning/repository", () => ({ DemandPlanningRepository: r
 vi.mock("@/lib/sku-master/repository", () => ({
   SkuMasterRepository: { insertMissingProducts: insertMissingProductsMock },
 }));
+const findFloorMatSetsMock = vi.fn<(skus: string[]) => Promise<Map<string, unknown>>>(async () => new Map());
+vi.mock("@/lib/sku-master/floor-mat-set-repository", () => ({
+  FloorMatSetRepository: { findBySkus: (skus: string[]) => findFloorMatSetsMock(skus) },
+}));
 vi.mock("@/lib/transit-stock/repository", () => ({
   TransitStockRepository: { syncAllStats: syncAllTransitStatsMock },
 }));
@@ -154,6 +158,72 @@ describe("lightweight container details", () => {
     expect(getCacheMock.mock.calls[0][6]).toMatch(/^containers-only-v1:/);
     expect(repositoryMock.getCrossData).not.toHaveBeenCalled();
     expect(repositoryMock.getStatsRows).not.toHaveBeenCalled();
+  });
+});
+
+describe("DemandPlanningService.getDashboardData floor mat sets", () => {
+  const statsRow = (sku: string, patch: Record<string, unknown> = {}) => ({
+    sku, total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
+    latest_container: null, latest_eta: null, latest_qty: null,
+    sales_status: "Original", category_code: "FM", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
+    back: 0, west_stock: 0, east_stock: 0, west_available_stock: 0, east_available_stock: 0, transit_stock: 0,
+    fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0, dream_trans_stock: 0, linkone_stock: 0,
+    fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0, dream_trans_available_stock: 0, linkone_available_stock: 0,
+    total_stock: 0, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
+    east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+    avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+    fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
+    fba_90d_sales: 0, fba_60d_sales: 0, fba_30d_sales: 0, fba_15d_sales: 0, fba_7d_sales: 0, fba_30d_pre: 0,
+    fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1, total_avg_curr_override: null,
+    oos_days_90d: 0, oos_lost_demand_90d: 0,
+    ...patch,
+  });
+  const SET = { frontSku: "CA-FM-TX-F", rearSku: "CA-FM-TX-R", preOrder12: true, preOrder3: null, thirdRows: [], oldSetSkus: [] };
+  const rows = () => [
+    // The master holds 2 prepacked sets; 3 fronts and 5 rears are loose at TTM.
+    statsRow("CA-FM-80-FM1", { total_stock: 2, east_available_stock: 2, ttm_available_stock: 2 }),
+    statsRow("CA-FM-TX-F", { total_stock: 3, ttm_available_stock: 3 }),
+    statsRow("CA-FM-TX-R", { total_stock: 5, ttm_jeff_available_stock: 5 }),
+  ];
+
+  it("adds Loose Sets On Hand to a master's Total Stock and redoes its S.O.D.", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue(rows());
+    const plain = (await DemandPlanningService.getDashboardData(baseQuery)).data.rows[0];
+
+    repositoryMock.getStatsRows.mockResolvedValue(rows());
+    findFloorMatSetsMock.mockResolvedValueOnce(new Map([["CA-FM-80-FM1", SET]]));
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const [master, front, rear] = data.rows;
+
+    expect(findFloorMatSetsMock).toHaveBeenLastCalledWith(["CA-FM-80-FM1", "CA-FM-TX-F", "CA-FM-TX-R"]);
+    // MIN(3 fronts, 5 rears) = 3 sets on top of the 2 prepacked ones.
+    expect(master).toMatchObject({ fm_set: SET, loose_sets_on_hand: 3, total_stock: 5 });
+    // One a day: 2 days of stock without the loose sets, 5 with them.
+    expect(plain.sod_days_raw).toBe(2);
+    expect(master.sod_days_raw).toBe(5);
+    // S.O.D. is exactly what a master holding 5 units outright would get.
+    repositoryMock.getStatsRows.mockResolvedValue([statsRow("CA-FM-80-FM1", { total_stock: 5 })]);
+    const outright = (await DemandPlanningService.getDashboardData(baseQuery)).data.rows[0];
+    expect(master.sod).toBe(outright.sod);
+    expect(master.sod! > plain.sod!).toBe(true);
+    // The components keep their own stock; they are not reduced by the pairing.
+    expect(front).toMatchObject({ total_stock: 3 });
+    expect(front.loose_sets_on_hand).toBeUndefined();
+    expect(rear.total_stock).toBe(5);
+  });
+
+  it("changes nothing when no set links are recorded", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue(rows());
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(data.rows[0].total_stock).toBe(2);
+    expect(data.rows[0].fm_set).toBeUndefined();
+    expect(data.rows[0].loose_sets_on_hand).toBeUndefined();
+  });
+
+  it("does not look up sets when the view has no floor mat rows", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([statsRow("CA-SC-1", { category_code: "SC" })]);
+    await DemandPlanningService.getDashboardData(baseQuery);
+    expect(findFloorMatSetsMock).not.toHaveBeenCalled();
   });
 });
 
