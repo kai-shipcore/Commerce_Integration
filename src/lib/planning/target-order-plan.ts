@@ -7,7 +7,9 @@
  * target days are scaled down by the same share until the whole order fits,
  * so the container is spread across the SKUs rather than filled by whichever
  * ones come first. The previous version filled SKUs at full target in display
- * order and left everything after the capacity ran out blank.
+ * order and left everything after the capacity ran out blank. In that scaled
+ * plan a need below the SKU's MOQ is skipped instead of rounded up, and any
+ * capacity left is handed out by demand, highest first.
  */
 
 export type TargetOrderCandidate = {
@@ -33,12 +35,17 @@ export type TargetOrderPlan = {
 
 const EPS = 1e-9;
 
-export function targetOrderQty(candidate: TargetOrderCandidate, scale = 1): number {
+/**
+ * @param roundUpToMoq When false (a capacity-limited plan), a need below the
+ *   MOQ orders nothing instead of being rounded up to it.
+ */
+export function targetOrderQty(candidate: TargetOrderCandidate, scale = 1, roundUpToMoq = true): number {
   if (!Number.isFinite(candidate.targetDays) || candidate.targetDays <= 0) return 0;
   const step = Math.max(1, candidate.step || 1);
   const moq = Math.max(1, candidate.moq || 1);
   const need = candidate.adjDaily * candidate.targetDays * scale + candidate.backorder - candidate.remainingAtArrival;
   if (need <= 0) return 0;
+  if (!roundUpToMoq && need < moq) return 0;
   return Math.ceil(Math.max(need, moq) / step) * step;
 }
 
@@ -62,21 +69,33 @@ export function planTargetOrders(candidates: TargetOrderCandidate[], capacityCbm
   let targetScale = 1;
   if (capacityCbm != null && required.cbm > capacityCbm + EPS) {
     const capacity = Math.max(0, capacityCbm);
-    // Quantity only grows with the scale, so the largest scale that fits is a
-    // plain bisection.
+    // Short on capacity, a need below the MOQ is skipped rather than rounded
+    // up. Rounding up spends the container on slow sellers that need a
+    // fraction of their MOQ (a Seat Cover container has ~1,100 SKUs selling
+    // 0.03 a day, each rounded up to 10) and leaves the fast sellers short.
+    // It also makes every empty SKU jump from 0 to its MOQ at the same
+    // scale, which collapses the scaling below to 0.
+    const strictAt = (scale: number) => candidates.map((candidate) => targetOrderQty(candidate, scale, false));
     let lo = 0;
     let hi = 1;
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      if (cbmOf(quantitiesAt(mid)) <= capacity + EPS) lo = mid;
-      else hi = mid;
+    let next = full;
+    if (cbmOf(strictAt(1)) <= capacity + EPS) {
+      lo = 1;
+    } else {
+      // Quantity only grows with the scale, so the largest scale that fits
+      // is a plain bisection.
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (cbmOf(strictAt(mid)) <= capacity + EPS) lo = mid;
+        else hi = mid;
+      }
+      next = strictAt(hi);
     }
     targetScale = lo;
-    quantities = quantitiesAt(lo);
+    quantities = strictAt(lo);
 
-    // Back orders alone, or MOQ / order-multiple rounding at a near-zero
-    // scale, can still overflow. Trim what remains in order so the result
-    // never exceeds capacity.
+    // Back orders alone can still overflow. Trim what remains in order so
+    // the result never exceeds capacity.
     let used = 0;
     quantities = quantities.map((qty, index) => {
       if (qty <= 0) return 0;
@@ -92,6 +111,20 @@ export function planTargetOrders(candidates: TargetOrderCandidate[], capacityCbm
       used += planned * candidate.cbmUnit;
       return planned;
     });
+
+    // Spend what is left SKU by SKU, highest demand first: on the next step
+    // of the scale (SKUs whose need just reached their MOQ), or, when every
+    // need at or above MOQ already fits, on rounding the rest up to MOQ.
+    const order = candidates
+      .map((candidate, index) => ({ index, demand: candidate.adjDaily * Math.max(0, candidate.targetDays) }))
+      .filter(({ index }) => next[index] > quantities[index])
+      .sort((a, b) => b.demand - a.demand);
+    for (const { index } of order) {
+      const extra = (next[index] - quantities[index]) * candidates[index].cbmUnit;
+      if (used + extra > capacity + EPS) continue;
+      used += extra;
+      quantities[index] = next[index];
+    }
   }
 
   return {

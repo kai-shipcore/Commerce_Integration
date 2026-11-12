@@ -69,6 +69,35 @@ describe("planTargetOrders", () => {
     expect(cbm).toBeLessThanOrEqual(100 + 1e-9);
   });
 
+  it("skips needs below MOQ when short, instead of spending the container on rounded-up slow sellers", () => {
+    // 100 empty SKUs with MOQ 50 at 0.1 CBM. Rounded up to MOQ, any positive
+    // target puts all of them in at 500 CBM against 80 available, which used
+    // to collapse the scale to 0 and hand out MOQs only.
+    const candidates = Array.from({ length: 100 }, (_, i) =>
+      sku(`S${i}`, { adjDaily: 0.1 + i * 0.01, targetDays: 90, moq: 50 }));
+    const plan = planTargetOrders(candidates, 80);
+    const quantities = candidates.map((candidate) => plan.qtyByKey.get(candidate.key) ?? 0);
+    const cbm = quantities.reduce((sum, qty) => sum + qty * 0.1, 0);
+
+    expect(plan.targetScale).toBeGreaterThan(0.5);
+    expect(cbm).toBeLessThanOrEqual(80 + 1e-9);
+    expect(cbm).toBeGreaterThan(70);
+    expect(quantities.filter((qty) => qty > 0).every((qty) => qty >= 50)).toBe(true);
+    // The fastest seller gets more than a bare MOQ; the slow half gets nothing.
+    expect(quantities[99]).toBeGreaterThan(50);
+    expect(quantities.slice(0, 50).every((qty) => qty === 0)).toBe(true);
+  });
+
+  it("rounds remaining needs up to MOQ, highest demand first, once every need at or above MOQ fits", () => {
+    const plan = planTargetOrders([
+      sku("BIG", { adjDaily: 1, targetDays: 100, moq: 10 }),     // 100 units, 10 CBM
+      sku("SLOW", { adjDaily: 0.05, targetDays: 100, moq: 10 }), // 5 → MOQ 10, 1 CBM
+      sku("SLOWER", { adjDaily: 0.02, targetDays: 100, moq: 10 }), // 2 → MOQ 10, 1 CBM
+    ], 11.5);
+    expect(plan.targetScale).toBe(1);
+    expect([...plan.qtyByKey.values()]).toEqual([100, 10, 0]);
+  });
+
   it("orders nothing when there is no capacity left", () => {
     const plan = planTargetOrders([sku("A"), sku("B")], 0);
     expect([...plan.qtyByKey.values()]).toEqual([0, 0]);

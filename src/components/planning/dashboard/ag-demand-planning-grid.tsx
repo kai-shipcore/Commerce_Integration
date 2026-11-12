@@ -3420,8 +3420,8 @@ function CapacityModePanel({
       {showRequired && trimmedCbm > 0.005 ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
           {pick(
-            `목표일수 기준 필요량은 ${preview.requiredCbm.toFixed(2)} CBM입니다. 용량에 맞추기 위해 모든 SKU의 목표일수를 ${Math.round(preview.targetScale * 100)}%로 낮췄습니다.`,
-            `The target days call for ${preview.requiredCbm.toFixed(2)} CBM. To fit the container, every SKU's target days were lowered to ${Math.round(preview.targetScale * 100)}%.`,
+            `목표일수 기준 필요량은 ${preview.requiredCbm.toFixed(2)} CBM입니다. 용량에 맞추기 위해 모든 SKU의 목표일수를 약 ${Math.round(preview.targetScale * 100)}%로 낮췄고, 낮춘 필요량이 MOQ에 못 미치는 SKU는 제외했습니다.`,
+            `The target days call for ${preview.requiredCbm.toFixed(2)} CBM. To fit the container, every SKU's target days were lowered to about ${Math.round(preview.targetScale * 100)}%, and SKUs whose lowered need is below their MOQ are left out.`,
           )}
         </div>
       ) : null}
