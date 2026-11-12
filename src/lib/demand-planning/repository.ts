@@ -15,7 +15,7 @@ import { FBA_CHANNELS_SQL } from "@/lib/velocity/channels";
 import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
-import { normalizedMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
+import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
 
 function primary(): Pool {
   return getPrimaryPool();
@@ -491,15 +491,15 @@ export const DemandPlanningRepository = {
   async getInventorySnapshotAsOf(asOfDate: string): Promise<InventorySnapshotRow[]> {
     const lookup = getLookupPool();
     if (!lookup) return [];
-    // Normalised first, then aggregated: normalizedMasterSkuSql folds several
-    // source SKUs onto one master (the SWC rewrite and the exact remaps), so
-    // after picking each master's latest day its rows still have to be summed
-    // — matching how getInventoryByWarehouse builds the fc_stats values these
+    // Normalised first, then aggregated: inventoryMasterSkuSql folds the exact
+    // remaps onto one master (legacy SWC spellings stay separate), so after
+    // picking each master's latest day its rows still have to be summed —
+    // matching how getInventoryByWarehouse builds the fc_stats values these
     // numbers stand in for.
     const result = await lookup.query<InventorySnapshotRow>(`
       WITH normalized AS (
         SELECT
-          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          ${inventoryMasterSkuSql("master_sku")} AS master_sku,
           snapshot_date,
           COALESCE(available, 0)::int AS available,
           COALESCE(backorder, 0)::int AS backorder
@@ -573,7 +573,7 @@ export const DemandPlanningRepository = {
     const result = await lookup.query(`
       WITH normalized_inventory AS (
         SELECT
-          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          ${inventoryMasterSkuSql("master_sku")} AS master_sku,
           warehouse,
           on_hand,
           available,
