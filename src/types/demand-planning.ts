@@ -53,7 +53,10 @@ export interface DemandRow {
   color: string;
   tone: string;
   back: number;
-  sales_status: "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
+  sales_status:
+    | "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC"
+    // Floor mat statuses set on the SKU Master page (see src/lib/planning/floor-mat-sets.ts).
+    | "1+2 Set" | "1+2+3 Set" | "1st Row" | "2nd Row" | "3rd Row";
   category_code?: "SC" | "CC" | "FM" | "AC" | "SWC";
   sku: string;
   /**

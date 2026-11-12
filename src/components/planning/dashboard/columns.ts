@@ -426,11 +426,12 @@ export function loadSavedHeaderHeight(): number {
 }
 
 /** The sales statuses a row can carry. Not a new union — the row type already
- *  spells out all seven, and the toolbar filter offers exactly those. */
+ *  spells them all out, and the toolbar filter offers exactly those. */
 export type SalesStatus = DemandRow["sales_status"];
 
 export const SALES_STATUS_VALUES: SalesStatus[] = [
   "Original", "Custom", "Part", "SWC", "Hold", "Discontinued", "TBD",
+  "1+2 Set", "1+2+3 Set", "1st Row", "2nd Row", "3rd Row",
 ];
 
 /** Where a row sits when `fc_products` has no category for it: the SKU string

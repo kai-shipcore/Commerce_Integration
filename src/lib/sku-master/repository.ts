@@ -1,6 +1,13 @@
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { normalizeMasterSku, partMasterSkuSql } from "@/lib/planning/master-sku";
+import {
+  OVERRIDE_SALES_STATUSES,
+  type FloorMatSet,
+  type FloorMatSetImportFields,
+  type OverrideSalesStatus,
+} from "@/lib/planning/floor-mat-sets";
+import { FloorMatSetRepository } from "@/lib/sku-master/floor-mat-set-repository";
 
 export type ProductKey = "cc" | "fm" | "sc" | "ac" | "swc";
 
@@ -27,16 +34,22 @@ export interface ResolvedSkuMasterListQuery {
   productValues: string[];
   status: "all" | "active" | "inactive";
   salesType: "all" | "Original" | "Custom" | "Part";
-  typeFilter: "all" | "Hold" | "Discontinued" | "TBD";
+  typeFilter: "all" | OverrideSalesStatus;
 }
 
-export interface ExcelSkuRow {
+export interface ExcelSkuRow extends FloorMatSetImportFields {
   masterSku: string;
   cbmPerUnit?: number;
   moq?: number;
   orderMultiple?: number;
   status?: "active" | "inactive";
-  salesStatus?: "Hold" | "Discontinued" | "TBD";
+  salesStatus?: OverrideSalesStatus;
+}
+
+/** A floor mat set the Excel import resolved to its full next state. */
+export interface FloorMatSetWrite {
+  masterSku: string;
+  set: FloorMatSet;
 }
 
 export interface ExistingProductValues {
@@ -44,7 +57,7 @@ export interface ExistingProductValues {
   moq: number | null;
   orderMultiple: number | null;
   status: "active" | "inactive";
-  salesStatus: "Hold" | "Discontinued" | "TBD" | null;
+  salesStatus: OverrideSalesStatus | null;
 }
 
 export interface UpdateProductFields {
@@ -98,12 +111,15 @@ const forecastDashboardViewSql = `
     WHERE p.status = 'active'::shipcore.fc_product_status
 `;
 
-// Manual override only (Hold/Discontinued/TBD). SWC is an item/category designation (it lives in
+// Manual override only (Hold/Discontinued/TBD, plus the floor mat statuses
+// 1+2 Set / 1+2+3 Set / 1st Row / 2nd Row / 3rd Row). SWC is an item/category designation (it lives in
 // the category filter bar instead, matched directly against the raw column below) rather than a
 // lifecycle status, so it's excluded here. Legacy rows where p.sales_status was mistakenly
 // written as 'Original'/'Custom' (a footgun in the old single-dropdown UI) are also treated as having
 // no override, same as NULL — Original/Custom live in originalOrCustomSql.
-const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued', 'TBD') THEN p.sales_status ELSE NULL END)`;
+// The list is a compile-time constant, never user input, so inlining it is safe.
+const OVERRIDE_STATUS_SQL_LIST = OVERRIDE_SALES_STATUSES.map((value) => `'${value}'`).join(", ");
+const overrideStatusSql = `(CASE WHEN p.sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN p.sales_status ELSE NULL END)`;
 // Original vs Custom is derived purely from actual order/velocity data (the is_custom flag baked
 // into fc_stats/fc_stats_custom), independent of any manual override on fc_products.
 // Replacement parts are a third sales type, and they take precedence over the
@@ -514,11 +530,11 @@ export const SkuMasterRepository = {
       moq: number | null;
       order_multiple: number | null;
       status: "active" | "inactive";
-      sales_status: "Hold" | "Discontinued" | "TBD" | null;
+      sales_status: OverrideSalesStatus | null;
     }>(
       `SELECT master_sku, cbm_per_unit::text, moq, order_multiple,
               status::text AS status,
-              CASE WHEN sales_status IN ('Hold', 'Discontinued', 'TBD') THEN sales_status ELSE NULL END AS sales_status
+              CASE WHEN sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN sales_status ELSE NULL END AS sales_status
        FROM shipcore.fc_products
        WHERE master_sku = ANY($1::text[])`,
       [masterSkus]
@@ -537,7 +553,15 @@ export const SkuMasterRepository = {
     );
   },
 
-  async applyExcelImport(rows: ExcelSkuRow[]): Promise<{ updated: number; inserted: number }> {
+  /**
+   * `floorMatSets` are written in the same transaction, after the product
+   * rows exist (fc_floor_mat_sets.master_sku references fc_products).
+   */
+  async applyExcelImport(
+    rows: ExcelSkuRow[],
+    floorMatSets: FloorMatSetWrite[] = [],
+    actor: string | null = null
+  ): Promise<{ updated: number; inserted: number }> {
     const pool = getPrimaryPool();
     const client = await pool.connect();
 
@@ -651,6 +675,10 @@ export const SkuMasterRepository = {
         )
         ON CONFLICT (master_sku) DO NOTHING
       `);
+
+      for (const { masterSku, set } of floorMatSets) {
+        await FloorMatSetRepository.save(masterSku, set, actor, client);
+      }
 
       await client.query("COMMIT");
       return { updated: updatedResult.rowCount ?? 0, inserted: insertedResult.rowCount ?? 0 };

@@ -10,6 +10,20 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
 import { SkuPriceHistoryDrawer } from "@/components/production/sku-price-history-drawer";
 import {
+  FLOOR_MAT_SALES_STATUSES,
+  emptyFloorMatSet,
+  formatPreOrder,
+  isFloorMatSalesStatus,
+  parseOverrideSalesStatus,
+  parsePreOrder,
+  parseSkuList,
+  sameFloorMatSet,
+  splitMultiValue,
+  type FloorMatSet,
+  type FloorMatSetImportFields,
+  type OverrideSalesStatus,
+} from "@/lib/planning/floor-mat-sets";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -32,14 +46,17 @@ type SkuMasterRow = {
   cbmPerUnit: number;
   caseQty: number;
   weightKg: number;
+  // Floor mat set links (1st/2nd/3rd Row SKUs, Pre-Order flags, old set SKUs).
+  // Null for non-floor-mat SKUs and for floor mat SKUs with nothing recorded.
+  floorMatSet: FloorMatSet | null;
 };
 
 type SkuStatus = "active" | "inactive";
-// Manual override only — Original/Custom are derived from actual order data (is_custom flag),
-// never manually assignable, so they live in a separate OriginalOrCustom field/column instead.
-// SWC is an item/category designation (surfaced in the category filter bar), not a lifecycle
-// status, so it's excluded here too.
-type OverrideSalesStatus = "Hold" | "Discontinued" | "TBD";
+// OverrideSalesStatus (the TYPE column) is a manual override only — Original/Custom are derived
+// from actual order data (is_custom flag), never manually assignable, so they live in a separate
+// OriginalOrCustom field/column instead. SWC is an item/category designation (surfaced in the
+// category filter bar), not a lifecycle status, so it's excluded here too. The floor mat
+// statuses (1+2 Set, 1st Row, ...) share the field and are only offered on floor mat SKUs.
 // Part is derived from the SKU itself (see partMasterSkuSql), not stored.
 type OriginalOrCustom = "Original" | "Custom" | "Part";
 type StatusFilter = SkuStatus | "all";
@@ -103,7 +120,7 @@ function categoryFilterSummary(selected: SkuMasterCategoryFilter[], allLabel: st
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
-type ExcelSkuImportRow = {
+type ExcelSkuImportRow = FloorMatSetImportFields & {
   masterSku: string;
   cbmPerUnit?: number;
   moq?: number;
@@ -118,6 +135,8 @@ type ImportPreviewValue = {
   orderMultiple: number | null;
   status: SkuStatus;
   salesStatus: OverrideSalesStatus | null;
+  // One-line summary of the floor mat set, built by the server.
+  floorMatSet: string | null;
 };
 
 type ImportPreviewRow = {
@@ -131,6 +150,8 @@ type ImportPreviewRow = {
 type ImportPreview = {
   rows: ImportPreviewRow[];
   summary: { insert: number; update: number; unchanged: number };
+  // Linked component SKUs with no SKU Master row: allowed, but usually a typo.
+  unknownComponentSkus?: string[];
 };
 
 function normalizeHeader(value: unknown): string {
@@ -160,11 +181,60 @@ function parseStatusCell(value: unknown): SkuStatus | undefined {
 }
 
 function parseTypeCell(value: unknown): OverrideSalesStatus | undefined {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "hold") return "Hold";
-  if (normalized === "discontinued") return "Discontinued";
-  if (normalized === "tbd") return "TBD";
-  return undefined;
+  return parseOverrideSalesStatus(value);
+}
+
+// Floor mat set columns. Header text is normalized to lowercase a-z0-9 first, so
+// "Front (1st Row)" reads "front1strow" and "1~2열 Pre-Order 가능?" reads "12preorder".
+// The lists cover the planning sheet's headers, this page's template, and its CSV export.
+const FLOOR_MAT_HEADERS = {
+  frontSku: ["frontsku", "front1strow", "front1strowsku", "frontrowsku", "1strowsku"],
+  rearSku: ["rearsku", "rear2ndrow", "rear2ndrowsku", "rearrowsku", "2ndrowsku"],
+  thirdRowSkus: ["3rdrow", "3rdrowsku", "3rdrowskus", "thirdrowsku", "thirdrowskus"],
+  preOrder12: ["12preorder", "preorder12", "12rowpreorder"],
+  preOrder3: ["3preorder", "preorder3", "3rdrowpreorder"],
+  oldSetSkus: ["oldsetsku", "oldsetskus", "oldmastersetsku", "oldmastersetskus"],
+} as const;
+
+function findFloorMatHeader(headers: string[], names: readonly string[]): number {
+  // The sheet's old-set header carries a Korean note that normalizes to a
+  // trailing "setsku", hence the prefix match for that one column.
+  return headers.findIndex((header) => names.includes(header) || (names.includes("oldmastersetsku") && header.startsWith("oldmastersetsku")));
+}
+
+function parseFloorMatCells(
+  masterSku: string,
+  cells: { frontSku: unknown; rearSku: unknown; thirdRowSkus: unknown; preOrder12: unknown; preOrder3: unknown; oldSetSkus: unknown }
+): FloorMatSetImportFields {
+  const fields: FloorMatSetImportFields = {};
+  const single = (value: unknown, name: string) => {
+    const skus = parseSkuList(value);
+    if (skus.length > 1) throw new Error(`${masterSku}: ${name} takes one SKU, got ${skus.length}`);
+    return skus[0];
+  };
+  const frontSku = single(cells.frontSku, "1st Row SKU");
+  if (frontSku) fields.frontSku = frontSku;
+  const rearSku = single(cells.rearSku, "2nd Row SKU");
+  if (rearSku) fields.rearSku = rearSku;
+  const thirdRowSkus = parseSkuList(cells.thirdRowSkus);
+  if (thirdRowSkus.length > 0) fields.thirdRowSkus = thirdRowSkus;
+  const oldSetSkus = parseSkuList(cells.oldSetSkus);
+  if (oldSetSkus.length > 0) fields.oldSetSkus = oldSetSkus;
+
+  const preOrder12 = parsePreOrder(String(cells.preOrder12 ?? "").trim());
+  if (preOrder12 === undefined) {
+    throw new Error(`Invalid 1~2 Row Pre-Order for ${masterSku}: ${String(cells.preOrder12)} (use Yes or No)`);
+  }
+  if (preOrder12 != null) fields.preOrder12 = preOrder12;
+
+  const preOrder3Values = splitMultiValue(cells.preOrder3).map((part) => {
+    const parsed = parsePreOrder(part);
+    if (parsed === undefined) throw new Error(`Invalid 3rd Row Pre-Order for ${masterSku}: ${part} (use Yes or No)`);
+    return parsed;
+  });
+  if (preOrder3Values.some((value) => value != null)) fields.preOrder3Values = preOrder3Values;
+
+  return fields;
 }
 
 function decimalPlaces(value: number): number {
@@ -224,7 +294,17 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
         (header) => header === "type" || header === "salesstatus"
       );
 
-      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0 && statusIndex < 0 && typeIndex < 0) continue;
+      const floorMatIndex = {
+        frontSku: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.frontSku),
+        rearSku: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.rearSku),
+        thirdRowSkus: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.thirdRowSkus),
+        preOrder12: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.preOrder12),
+        preOrder3: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.preOrder3),
+        oldSetSkus: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.oldSetSkus),
+      };
+      const hasFloorMatColumns = Object.values(floorMatIndex).some((index) => index >= 0);
+
+      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0 && statusIndex < 0 && typeIndex < 0 && !hasFloorMatColumns) continue;
 
       for (let dataRowIndex = rowIndex + 1; dataRowIndex < matrix.length; dataRowIndex += 1) {
         const dataRow = matrix[dataRowIndex];
@@ -250,7 +330,21 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
         }
 
         if (!masterSku || !masterSku.includes("-")) continue;
-        if (cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null) continue;
+        const cell = (index: number) => (index >= 0 ? dataRow[index] : "");
+        const floorMatFields = hasFloorMatColumns
+          ? parseFloorMatCells(masterSku, {
+              frontSku: cell(floorMatIndex.frontSku),
+              rearSku: cell(floorMatIndex.rearSku),
+              thirdRowSkus: cell(floorMatIndex.thirdRowSkus),
+              preOrder12: cell(floorMatIndex.preOrder12),
+              preOrder3: cell(floorMatIndex.preOrder3),
+              oldSetSkus: cell(floorMatIndex.oldSetSkus),
+            })
+          : {};
+        if (
+          cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null &&
+          Object.keys(floorMatFields).length === 0
+        ) continue;
 
         const precision = cbmPerUnit == null ? 0 : decimalPlaces(cbmPerUnit);
         const existing = rowsBySku.get(masterSku);
@@ -259,7 +353,7 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
           sheetPriority < existing.sheetPriority ||
           (sheetPriority === existing.sheetPriority && precision > existing.precision)
         ) {
-          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, precision, sheetPriority });
+          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, ...floorMatFields, precision, sheetPriority });
         }
       }
 
@@ -267,14 +361,31 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
     }
   }
 
-  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus }) => ({
-    masterSku,
-    cbmPerUnit,
-    moq,
-    orderMultiple,
-    status,
-    salesStatus,
-  }));
+  return [...rowsBySku.values()].map((entry) => {
+    const row: ExcelSkuImportRow & { precision?: number; sheetPriority?: number } = { ...entry };
+    delete row.precision;
+    delete row.sheetPriority;
+    return row;
+  });
+}
+
+const isFloorMatRow = (row: Pick<SkuMasterRow, "productKey">) => row.productKey === "fm";
+
+// What the editor holds can contain half-typed entries (a blank 3rd Row line,
+// a lowercase SKU). This is the form that is compared and sent.
+function cleanFloorMatSet(set: FloorMatSet | null): FloorMatSet {
+  const source = set ?? emptyFloorMatSet();
+  const sku = (value: string | null) => (value ?? "").trim().toUpperCase() || null;
+  return {
+    frontSku: sku(source.frontSku),
+    rearSku: sku(source.rearSku),
+    preOrder12: source.preOrder12,
+    preOrder3: source.preOrder3,
+    thirdRows: source.thirdRows
+      .map((row) => ({ sku: row.sku.trim().toUpperCase(), preOrder: row.preOrder }))
+      .filter((row) => row.sku),
+    oldSetSkus: parseSkuList(source.oldSetSkus),
+  };
 }
 
 export function SkuMasterPage() {
@@ -378,7 +489,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus" | "originalOrCustom">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus" | "originalOrCustom" | "floorMatSet">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -415,11 +526,17 @@ export function SkuMasterPage() {
       return false;
     }
     try {
+      // Sent only when the links actually changed: an untouched floor mat row
+      // must save the same way a row without set links does.
+      const nextSet = cleanFloorMatSet(row.floorMatSet);
+      const setChanged =
+        isFloorMatRow(row) && !sameFloorMatSet(cleanFloorMatSet(editingSnapshot?.floorMatSet ?? null), nextSet);
       const res = await fetch(apiPath("/api/planning/sku-master"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           masterSku: row.masterSku,
+          floorMatSet: setChanged ? nextSet : undefined,
           cbmPerUnit: row.cbmPerUnit,
           moq: row.moq,
           orderMultiple: row.orderMultiple,
@@ -435,6 +552,7 @@ export function SkuMasterPage() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error ?? pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
+      if (setChanged) updateRow(row.masterSku, { floorMatSet: nextSet });
       return true;
     } catch (error) {
       revertEditingSnapshot();
@@ -539,11 +657,23 @@ export function SkuMasterPage() {
 
   function downloadImportTemplate() {
     const worksheet = XLSX.utils.aoa_to_sheet([
-      ["Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type"],
+      [
+        "Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type",
+        "1st Row SKU", "2nd Row SKU", "3rd Row SKU", "1~2 Pre-Order", "3 Pre-Order", "Old Set SKU",
+      ],
       ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued"],
       ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold"],
+      [
+        "CA-FM-80-EXAMPLE", 0.0957, 5, 5, "active", "1+2 Set",
+        "CA-FM-TX-80-S1-EXAMPLE", "CA-FM-TX-80-S2-EXAMPLE",
+        "CA-FM-TX-80-S3-EXAMPLE-A|CA-FM-TX-80-S3-EXAMPLE-B", "Yes", "Yes|No", "CA-FM-80-EXAMPLE-C",
+      ],
+      ["CA-FM-TX-80-S3-EXAMPLE-A", "", "", "", "", "3rd Row", "", "", "", "", "Yes", ""],
     ]);
-    worksheet["!cols"] = [{ wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 18 }];
+    worksheet["!cols"] = [
+      { wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 18 },
+      { wch: 28 }, { wch: 28 }, { wch: 52 }, { wch: 14 }, { wch: 14 }, { wch: 28 },
+    ];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "SKU Master Import");
@@ -587,6 +717,13 @@ export function SkuMasterPage() {
         "order_multiple",
         "case_qty",
         "weight_kg",
+        // Floor mat set links. Multi-value cells use "|" so the file can be re-imported.
+        "front_sku",
+        "rear_sku",
+        "third_row_skus",
+        "preorder_1_2",
+        "preorder_3",
+        "old_set_skus",
       ];
       const lines = [
         headers.join(","),
@@ -604,6 +741,16 @@ export function SkuMasterPage() {
             sku.orderMultiple,
             sku.caseQty,
             sku.weightKg,
+            sku.floorMatSet?.frontSku ?? "",
+            sku.floorMatSet?.rearSku ?? "",
+            sku.floorMatSet?.thirdRows.map((row) => row.sku).join("|") ?? "",
+            formatPreOrder(sku.floorMatSet?.preOrder12),
+            sku.floorMatSet
+              ? sku.floorMatSet.thirdRows.length > 0
+                ? sku.floorMatSet.thirdRows.map((row) => formatPreOrder(row.preOrder)).join("|")
+                : formatPreOrder(sku.floorMatSet.preOrder3)
+              : "",
+            sku.floorMatSet?.oldSetSkus.join("|") ?? "",
           ]
             .map(formatCsvCell)
             .join(",")
@@ -736,6 +883,9 @@ export function SkuMasterPage() {
             <option value="Hold">Hold</option>
             <option value="Discontinued">Discontinued</option>
             <option value="TBD">TBD</option>
+            {FLOOR_MAT_SALES_STATUSES.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
           </select>
           <select
             value={salesTypeFilter}
@@ -861,6 +1011,14 @@ export function SkuMasterPage() {
                 <li>{pick("Master SKU는 필수이며, 나머지는 입력된 컬럼만 업데이트됩니다.", "Master SKU is required; only populated value columns are updated.")}</li>
                 <li>{pick("CBM은 0보다 큰 숫자, MOQ와 주문 배수는 1 이상의 정수로 입력해 주세요.", "CBM must be greater than zero; MOQ and Order Multiple must be integers of at least 1.")}</li>
                 <li>{pick("Status는 active 또는 inactive, Type은 Hold, Discontinued 또는 TBD를 입력해 주세요.", "Status accepts active or inactive; Type accepts Hold, Discontinued, or TBD.")}</li>
+                <li>{pick(
+                  "플로어매트 SKU는 Type에 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, 3rd Row도 쓸 수 있고, 선택 컬럼 1st Row SKU, 2nd Row SKU, 3rd Row SKU, 1~2 Pre-Order, 3 Pre-Order, Old Set SKU를 추가할 수 있습니다 (템플릿 참고).",
+                  "Floor mat SKUs also accept Type 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, or 3rd Row, and the optional columns 1st Row SKU, 2nd Row SKU, 3rd Row SKU, 1~2 Pre-Order, 3 Pre-Order, and Old Set SKU (see the template)."
+                )}</li>
+                <li>{pick(
+                  "3rd Row SKU가 여러 개면 한 셀에 | 또는 줄바꿈으로 구분하고, 3 Pre-Order는 같은 순서로 Yes/No를 적어 주세요.",
+                  "For several 3rd Row SKUs, separate them in one cell with | or a line break, and list 3 Pre-Order as Yes/No in the same order."
+                )}</li>
                 <li>{pick("동일 SKU가 여러 번 나오면 우선순위가 높은 시트의 값이 적용됩니다.", "If a SKU appears more than once, the value from the higher-priority sheet is used.")}</li>
               </ul>
             </div>
@@ -927,6 +1085,21 @@ export function SkuMasterPage() {
                 />
               </div>
 
+              {importPreview.unknownComponentSkus?.length ? (
+                <div className="border-b border-amber-200 bg-amber-50 px-6 py-2.5 text-xs leading-5 text-amber-900">
+                  <span className="font-semibold">
+                    {pick(
+                      `SKU 마스터에 없는 연결 SKU ${importPreview.unknownComponentSkus.length}개 (오타인지 확인해 주세요): `,
+                      `${importPreview.unknownComponentSkus.length} linked SKU(s) are not in SKU Master (check for typos): `
+                    )}
+                  </span>
+                  <span className="font-mono">
+                    {importPreview.unknownComponentSkus.slice(0, 20).join(", ")}
+                    {importPreview.unknownComponentSkus.length > 20 ? " …" : ""}
+                  </span>
+                </div>
+              ) : null}
+
               <div className="max-h-[55vh] overflow-auto">
                 <table className="w-full min-w-[1120px] border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-[#292724] text-white">
@@ -938,6 +1111,7 @@ export function SkuMasterPage() {
                       <th className="px-4 py-3 font-semibold">Order Multiple</th>
                       <th className="px-4 py-3 font-semibold">Status</th>
                       <th className="px-4 py-3 font-semibold">Type</th>
+                      <th className="px-4 py-3 font-semibold">{pick("세트 연결", "Set Links")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -984,6 +1158,12 @@ export function SkuMasterPage() {
                           current={row.current?.salesStatus ?? null}
                           next={row.next.salesStatus}
                           changed={row.changedFields.includes("salesStatus")}
+                        />
+                        <ImportValueChange
+                          current={row.current?.floorMatSet ?? null}
+                          next={row.next.floorMatSet}
+                          changed={row.changedFields.includes("floorMatSet")}
+                          wrap
                         />
                       </tr>
                     ))}
@@ -1132,12 +1312,12 @@ export function SkuMasterPage() {
         </div>
 
         {visibleSkus.map((sku) => (
+          <div key={sku.masterSku} className="min-w-[1450px] border-b border-[#e2dfd8] last:border-b-0">
           <div
-            key={sku.masterSku}
             onClick={() => {
               if (canViewPriceHistory && editingSku !== sku.masterSku) setSelectedPriceSku(sku);
             }}
-            className={`grid min-w-[1450px] grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0 ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
+            className={`grid grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] items-center text-sm ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -1151,6 +1331,7 @@ export function SkuMasterPage() {
             <EditableSalesStatus
               active={editingSku === sku.masterSku}
               value={sku.salesStatus}
+              floorMat={isFloorMatRow(sku)}
               onChange={(value) => updateRow(sku.masterSku, { salesStatus: value })}
             />
             <EditableOriginalOrCustom
@@ -1229,6 +1410,15 @@ export function SkuMasterPage() {
                 {editingSku === sku.masterSku ? pick("완료", "Done") : pick("편집", "Edit")}
               </button>
             </div>
+          </div>
+          {isFloorMatRow(sku) && editingSku === sku.masterSku ? (
+            <FloorMatSetEditor
+              value={sku.floorMatSet ?? emptyFloorMatSet()}
+              onChange={(value) => updateRow(sku.masterSku, { floorMatSet: value })}
+            />
+          ) : isFloorMatRow(sku) && sku.floorMatSet ? (
+            <FloorMatSetSummary value={sku.floorMatSet} />
+          ) : null}
           </div>
         ))}
 
@@ -1334,13 +1524,22 @@ const SALES_STATUS_OPTIONS: OverrideSalesStatus[] = ["Hold", "Discontinued", "TB
 function EditableSalesStatus({
   active,
   value,
+  floorMat = false,
   onChange,
 }: {
   active: boolean;
   value: OverrideSalesStatus | null;
+  /** Floor mat SKUs are also offered 1+2 Set / 1+2+3 Set / 1st–3rd Row. */
+  floorMat?: boolean;
   onChange: (value: OverrideSalesStatus | null) => void;
 }) {
   if (active) {
+    // A stored value stays selectable even if it would not be offered for this
+    // SKU, so opening Edit never silently changes it.
+    const options: OverrideSalesStatus[] = [
+      ...SALES_STATUS_OPTIONS,
+      ...(floorMat ? FLOOR_MAT_SALES_STATUSES : isFloorMatSalesStatus(value) ? [value] : []),
+    ];
     return (
       <div className="px-4 py-3">
         <select
@@ -1349,7 +1548,7 @@ function EditableSalesStatus({
           className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
         >
           <option value="">—</option>
-          {SALES_STATUS_OPTIONS.map((s) => (
+          {options.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
@@ -1361,17 +1560,207 @@ function EditableSalesStatus({
     Hold:         "bg-amber-100 text-amber-700",
     Discontinued: "bg-red-100 text-red-600",
     TBD:          "bg-slate-100 text-slate-500",
+    "1+2 Set":    "bg-emerald-100 text-emerald-700",
+    "1+2+3 Set":  "bg-teal-100 text-teal-700",
+    "1st Row":    "bg-sky-100 text-sky-700",
+    "2nd Row":    "bg-indigo-100 text-indigo-700",
+    "3rd Row":    "bg-violet-100 text-violet-700",
   };
 
   return (
     <div className="px-4 py-3">
       {value ? (
-        <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${badge[value]}`}>
+        <span className={`inline-flex items-center whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${badge[value]}`}>
           {value}
         </span>
       ) : (
         <span className="text-xs text-muted-foreground">—</span>
       )}
+    </div>
+  );
+}
+
+function PreOrderBadge({ value }: { value: boolean | null }) {
+  if (value == null) return null;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${value ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+      {formatPreOrder(value)}
+    </span>
+  );
+}
+
+/** Read-only line under a floor mat row that has set links recorded. */
+function FloorMatSetSummary({ value }: { value: FloorMatSet }) {
+  const { pick } = useI18n();
+  const label = "text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground";
+  return (
+    <div className="flex flex-wrap items-start gap-x-6 gap-y-1.5 bg-[#faf9f6] px-4 pb-2.5 pl-[196px] pt-1 text-xs">
+      {value.frontSku ? (
+        <div>
+          <div className={label}>{pick("1열 (Front)", "1st Row (Front)")}</div>
+          <div className="font-mono">{value.frontSku}</div>
+        </div>
+      ) : null}
+      {value.rearSku ? (
+        <div>
+          <div className={label}>{pick("2열 (Rear)", "2nd Row (Rear)")}</div>
+          <div className="font-mono">{value.rearSku}</div>
+        </div>
+      ) : null}
+      {value.preOrder12 != null ? (
+        <div>
+          <div className={label}>{pick("1~2열 Pre-Order", "1~2 Row Pre-Order")}</div>
+          <PreOrderBadge value={value.preOrder12} />
+        </div>
+      ) : null}
+      {value.thirdRows.length > 0 ? (
+        <div>
+          <div className={label}>{pick("3열 · Pre-Order", "3rd Row · Pre-Order")}</div>
+          {value.thirdRows.map((row) => (
+            <div key={row.sku} className="flex items-center gap-2">
+              <span className="font-mono">{row.sku}</span>
+              <PreOrderBadge value={row.preOrder} />
+            </div>
+          ))}
+        </div>
+      ) : value.preOrder3 != null ? (
+        <div>
+          <div className={label}>{pick("3열 Pre-Order", "3rd Row Pre-Order")}</div>
+          <PreOrderBadge value={value.preOrder3} />
+        </div>
+      ) : null}
+      {value.oldSetSkus.length > 0 ? (
+        <div>
+          <div className={label}>{pick("이전 세트 SKU", "Old Set SKU")}</div>
+          {value.oldSetSkus.map((sku) => (
+            <div key={sku} className="font-mono">{sku}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PreOrderSelect({ value, onChange, label }: { value: boolean | null; onChange: (value: boolean | null) => void; label: string }) {
+  return (
+    <select
+      aria-label={label}
+      value={value == null ? "" : value ? "yes" : "no"}
+      onChange={(event) => onChange(event.target.value === "" ? null : event.target.value === "yes")}
+      className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
+    >
+      <option value="">—</option>
+      <option value="yes">Yes</option>
+      <option value="no">No</option>
+    </select>
+  );
+}
+
+/** Edit panel under a floor mat row: component links, Pre-Order flags, old set SKUs. */
+function FloorMatSetEditor({ value, onChange }: { value: FloorMatSet; onChange: (value: FloorMatSet) => void }) {
+  const { pick } = useI18n();
+  const label = "mb-1 block text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground";
+  const input = "h-8 w-64 rounded-md border border-[#cccac4] bg-white px-2 font-mono text-xs outline-none focus:border-[#1a5cdb]";
+  const smallButton = "h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-40";
+
+  const setThirdRows = (thirdRows: FloorMatSet["thirdRows"]) => onChange({ ...value, thirdRows });
+  const moveThirdRow = (index: number, offset: number) => {
+    const next = [...value.thirdRows];
+    const [row] = next.splice(index, 1);
+    next.splice(index + offset, 0, row);
+    setThirdRows(next);
+  };
+
+  return (
+    <div
+      onClick={(event) => event.stopPropagation()}
+      className="flex flex-wrap items-start gap-x-6 gap-y-3 border-t border-dashed border-[#e2dfd8] bg-[#f7f9ff] px-4 py-3 pl-[196px] text-xs"
+    >
+      <label>
+        <span className={label}>{pick("1열 (Front) SKU", "1st Row (Front) SKU")}</span>
+        <input
+          value={value.frontSku ?? ""}
+          onChange={(event) => onChange({ ...value, frontSku: event.target.value.toUpperCase() || null })}
+          placeholder="CA-FM-TX-80-S1-…"
+          className={input}
+        />
+      </label>
+      <label>
+        <span className={label}>{pick("2열 (Rear) SKU", "2nd Row (Rear) SKU")}</span>
+        <input
+          value={value.rearSku ?? ""}
+          onChange={(event) => onChange({ ...value, rearSku: event.target.value.toUpperCase() || null })}
+          placeholder={pick("없으면 비워 두세요", "Leave blank if none")}
+          className={input}
+        />
+      </label>
+      <div>
+        <span className={label}>{pick("1~2열 Pre-Order 가능?", "1~2 Row Pre-Order?")}</span>
+        <PreOrderSelect
+          label="1~2 Row Pre-Order"
+          value={value.preOrder12}
+          onChange={(preOrder12) => onChange({ ...value, preOrder12 })}
+        />
+      </div>
+      <div>
+        <span className={label}>{pick("3열 SKU · 3열 Pre-Order 가능?", "3rd Row SKU · 3rd Row Pre-Order?")}</span>
+        <div className="space-y-1.5">
+          {value.thirdRows.map((row, index) => (
+            <div key={index} className="flex items-center gap-1.5">
+              <input
+                aria-label={`3rd Row SKU ${index + 1}`}
+                value={row.sku}
+                onChange={(event) =>
+                  setThirdRows(value.thirdRows.map((entry, i) => (i === index ? { ...entry, sku: event.target.value.toUpperCase() } : entry)))
+                }
+                placeholder="CA-FM-TX-80-S3-…"
+                className={input}
+              />
+              <PreOrderSelect
+                label={`3rd Row Pre-Order ${index + 1}`}
+                value={row.preOrder}
+                onChange={(preOrder) =>
+                  setThirdRows(value.thirdRows.map((entry, i) => (i === index ? { ...entry, preOrder } : entry)))
+                }
+              />
+              <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => moveThirdRow(index, -1)} className={smallButton}>↑</button>
+              <button type="button" aria-label="Move down" disabled={index === value.thirdRows.length - 1} onClick={() => moveThirdRow(index, 1)} className={smallButton}>↓</button>
+              <button
+                type="button"
+                aria-label="Remove 3rd Row SKU"
+                onClick={() => setThirdRows(value.thirdRows.filter((_, i) => i !== index))}
+                className={smallButton}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setThirdRows([...value.thirdRows, { sku: "", preOrder: null }])} className={smallButton}>
+              {pick("+ 3열 SKU 추가", "+ Add 3rd Row SKU")}
+            </button>
+            {value.thirdRows.length === 0 ? (
+              <>
+                <span className="text-muted-foreground">{pick("이 SKU 자체의 3열 Pre-Order:", "3rd Row Pre-Order for this SKU itself:")}</span>
+                <PreOrderSelect
+                  label="3rd Row Pre-Order"
+                  value={value.preOrder3}
+                  onChange={(preOrder3) => onChange({ ...value, preOrder3 })}
+                />
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <label>
+        <span className={label}>{pick("이전 세트 SKU (한 줄에 하나)", "Old Set SKU (one per line)")}</span>
+        <textarea
+          value={value.oldSetSkus.join("\n")}
+          onChange={(event) => onChange({ ...value, oldSetSkus: event.target.value.toUpperCase().split("\n") })}
+          rows={Math.max(2, value.oldSetSkus.length)}
+          className="w-64 rounded-md border border-[#cccac4] bg-white px-2 py-1.5 font-mono text-xs outline-none focus:border-[#1a5cdb]"
+        />
+      </label>
     </div>
   );
 }
@@ -1441,11 +1830,14 @@ function ImportValueChange({
   next,
   changed,
   decimals = 0,
+  wrap = false,
 }: {
   current: number | string | null;
   next: number | string | null;
   changed: boolean;
   decimals?: number;
+  /** Long text (the set summary) wraps instead of staying on one line. */
+  wrap?: boolean;
 }) {
   const format = (value: number | string | null) => value == null
     ? "—"
@@ -1456,9 +1848,9 @@ function ImportValueChange({
         : value;
 
   return (
-    <td className={`px-4 py-3 font-mono ${changed ? "bg-amber-50" : ""}`}>
+    <td className={`px-4 py-3 font-mono ${changed ? "bg-amber-50" : ""} ${wrap ? "min-w-[280px]" : ""}`}>
       {changed ? (
-        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+        <span className={wrap ? "flex flex-col gap-1" : "inline-flex items-center gap-2 whitespace-nowrap"}>
           <span className="text-slate-400 line-through">{format(current)}</span>
           <span className="text-slate-400">→</span>
           <span className="font-semibold text-blue-700">{format(next)}</span>
