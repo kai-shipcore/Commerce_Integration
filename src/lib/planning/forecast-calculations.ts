@@ -179,8 +179,15 @@ export function sheetContainerBackorderQty(
   total30d: number,
   estimatedSales: number,
   availableQty: number,
+  /**
+   * False for rows whose back order must not grow with forecast sales (floor
+   * mat 1st / 2nd Row components, see accumulatesBackorder): they show only
+   * the live back order still unfilled after this container, never a
+   * projected shortfall.
+   */
+  accumulates = true,
 ): number {
   if (isCarCover03Sku(sku)) return 0;
-  if (total30d <= 0) return Math.max(0, -availableQty);
+  if (total30d <= 0 || !accumulates) return Math.max(0, -availableQty);
   return Math.max(0, estimatedSales - availableQty);
 }

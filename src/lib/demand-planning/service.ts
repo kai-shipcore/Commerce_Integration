@@ -50,6 +50,7 @@ import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow, type
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { FloorMatSetRepository } from "@/lib/sku-master/floor-mat-set-repository";
 import { buildFloorMatView } from "@/lib/planning/floor-mat-dashboard";
+import { accumulatesBackorder } from "@/lib/planning/floor-mat-sets";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerRowData, DemandPlanningData, DemandPlanningContainerDetails, DemandRow } from "@/types/demand-planning";
 import { mapContainerDetails } from "./container-details";
@@ -620,7 +621,9 @@ export const DemandPlanningService = {
         const estSales = sheetContainerEstimatedSales(
           masterSku, daysBetween, dailyRate, seasonalFactor, availQtyC, qty,
         );
-        const backorderC = sheetContainerBackorderQty(masterSku, total_30d, estSales, availQtyC);
+        const backorderC = sheetContainerBackorderQty(
+          masterSku, total_30d, estSales, availQtyC, accumulatesBackorder(r.sales_status as string | null),
+        );
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 

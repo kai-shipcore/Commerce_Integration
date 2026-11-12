@@ -30,6 +30,17 @@ export function isFloorMatSalesStatus(value: unknown): value is FloorMatSalesSta
   return (FLOOR_MAT_SALES_STATUSES as readonly unknown[]).includes(value);
 }
 
+/**
+ * Whether a row's back order builds up along the container chain, i.e. grows
+ * by the forecast sales a container cannot cover. It does for sellable items:
+ * full sets, the 3rd Row, and every non-floor-mat SKU. The 1st / 2nd Row
+ * components are mostly consumed into sets, so a forecast shortfall on them
+ * would double count the set's own; they show only their live back order.
+ */
+export function accumulatesBackorder(salesStatus: string | null | undefined): boolean {
+  return salesStatus !== "1st Row" && salesStatus !== "2nd Row";
+}
+
 export function isFloorMatSku(masterSku: string): boolean {
   return masterSku.trim().toUpperCase().startsWith("CA-FM-");
 }

@@ -134,3 +134,28 @@ describe("cleared Con. Qty override", () => {
     expect(untouched?.avail_qty).toBe(15);
   });
 });
+
+describe("floor mat back orders along the chain", () => {
+  const chainFor = (salesStatus: DemandRow["sales_status"]) => computeContainerChain(
+    { ...row("CA-FM-80-FM15116"), sales_status: salesStatus }, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+  ).get("112-CA");
+
+  it("accumulates a forecast shortfall for a full set and a 3rd Row", () => {
+    // 15 available against 20 forecast sales over the 10 days: 5 short.
+    expect(chainFor("1+2 Set")).toMatchObject({ avail_qty: 15, est_sales: 20, backorder: 5, carryover: 0 });
+    expect(chainFor("3rd Row")?.backorder).toBe(5);
+  });
+
+  it("does not accumulate one for a 1st / 2nd Row component", () => {
+    expect(chainFor("1st Row")).toMatchObject({ avail_qty: 15, est_sales: 20, backorder: 0 });
+    expect(chainFor("2nd Row")?.backorder).toBe(0);
+  });
+
+  it("still carries a component's live back order until a container covers it", () => {
+    const owing = { ...row("CA-FM-TX-80-T1-FD-F509"), sales_status: "1st Row" as const, total_stock: 0, back: -8 };
+    const result = computeContainerChain(owing, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS);
+    expect(result.get("Base")?.backorder).toBe(8);
+    // 5 arrive against 8 owed: 3 still owed, and no forecast sales added on top.
+    expect(result.get("112-CA")).toMatchObject({ avail_qty: -3, backorder: 3 });
+  });
+});

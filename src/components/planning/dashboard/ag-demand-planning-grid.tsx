@@ -59,6 +59,13 @@ import {
   sheetContainerEstimatedSales,
 } from "@/lib/planning/forecast-calculations";
 import {
+  TARGET_TIER_GROUPS,
+  isAutoOrderSalesStatus,
+  targetTierGroupForRow,
+  type TargetTierGroup,
+} from "@/lib/planning/auto-order-groups";
+import { accumulatesBackorder } from "@/lib/planning/floor-mat-sets";
+import {
   buildFloorMatView,
   looseSetsOrdered,
   looseSetsOrderedIsSplit,
@@ -281,12 +288,8 @@ const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
   { minSales: 0, targetDays: 60 },
 ];
 
-// Target-day tiers are configured separately per product group: Seat Cover
-// Original vs Custom (by sales_status), Car Cover fabric 03 (PVC) vs 15
-// (Pongee). Everything else (other fabrics, SWC, floor mats, accessories)
-// shares the "other" tiers.
-const TARGET_TIER_GROUPS = ["sc_original", "sc_custom", "cc_03", "cc_15", "other"] as const;
-type TargetTierGroup = (typeof TARGET_TIER_GROUPS)[number];
+// The groups, and which rows are ordered automatically at all, live in
+// src/lib/planning/auto-order-groups.ts.
 type TargetTierSettings = Record<TargetTierGroup, SalesTargetTier[]>;
 
 const DEFAULT_TARGET_TIER_SETTINGS: TargetTierSettings = {
@@ -294,31 +297,10 @@ const DEFAULT_TARGET_TIER_SETTINGS: TargetTierSettings = {
   sc_custom: DEFAULT_BACKFILL3_TIERS,
   cc_03: DEFAULT_BACKFILL3_TIERS,
   cc_15: DEFAULT_BACKFILL3_TIERS,
+  fm_set: DEFAULT_BACKFILL3_TIERS,
+  fm_third: DEFAULT_BACKFILL3_TIERS,
   other: DEFAULT_BACKFILL3_TIERS,
 };
-
-/**
- * Automatic order calculations (all three auto-fill buttons) only give a
- * quantity to SKUs whose Sales Status is Original or Custom. Part, SWC, Hold,
- * Discontinued, TBD and blank are left for manual entry.
- */
-function isAutoOrderSalesStatus(row: Pick<DemandRow, "sales_status">): boolean {
-  return row.sales_status === "Original" || row.sales_status === "Custom";
-}
-
-function targetTierGroupForRow(row: Pick<DemandRow, "sku" | "category_code" | "sales_status">): TargetTierGroup {
-  const category = (row.category_code ?? "").toUpperCase();
-  if (category === "SC") return row.sales_status === "Custom" ? "sc_custom" : "sc_original";
-  if (category === "CC") {
-    // CC-<vehicle>-<fabric>-... ; legacy SKUs without a vehicle segment are CC-<fabric>-...
-    const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
-    const fabric = /^\d+$/.test(parts[1] ?? "") ? parts[1] : parts[2];
-    const fabricNumber = /^\d+$/.test(fabric ?? "") ? Number.parseInt(fabric, 10) : null;
-    if (fabricNumber === 3) return "cc_03";
-    if (fabricNumber === 15) return "cc_15";
-  }
-  return "other";
-}
 
 function targetTierGroupLabel(group: TargetTierGroup, pick: (ko: string, en: string) => string): string {
   switch (group) {
@@ -326,6 +308,8 @@ function targetTierGroupLabel(group: TargetTierGroup, pick: (ko: string, en: str
     case "sc_custom": return pick("시트커버 · Custom", "Seat Cover · Custom");
     case "cc_03": return pick("카커버 · 03", "Car Cover · 03");
     case "cc_15": return pick("카커버 · 15", "Car Cover · 15");
+    case "fm_set": return pick("플로어매트 · 1+2 Set", "Floor Mat · 1+2 Set");
+    case "fm_third": return pick("플로어매트 · 3rd Row", "Floor Mat · 3rd Row");
     default: return pick("기타", "Other");
   }
 }
@@ -1377,7 +1361,7 @@ function computeContainerChain(
       row.sku, days, dailyRate, seasonalFactor, available, qty,
     );
     const backorder = sheetContainerBackorderQty(
-      row.sku, row.total_30d ?? 0, estimatedSales, available,
+      row.sku, row.total_30d ?? 0, estimatedSales, available, accumulatesBackorder(row.sales_status),
     );
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
