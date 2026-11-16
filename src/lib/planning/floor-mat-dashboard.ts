@@ -159,6 +159,31 @@ export function componentPairingLines(sku: string, containerName: string): strin
   return component.pairings[stage - 1].map((pairing) => `${floorMatMasterLabel(pairing.masterSku)} × ${pairing.qty}`);
 }
 
+/**
+ * The container column a fixed "FM02 …" / "FM03 …" column reads: the first
+ * incoming container whose name starts with that code ("FM02-CA-FLOOR").
+ * Undefined once the container is no longer on the dashboard (received).
+ */
+function containerNamed(code: string): string | undefined {
+  const prefix = code.toUpperCase();
+  for (const name of currentView?.stageByContainer.keys() ?? []) {
+    if (name.toUpperCase().startsWith(prefix)) return name;
+  }
+  return undefined;
+}
+
+/** usableArrival() for the container with the given code, e.g. "FM02". */
+export function usableArrivalIn(sku: string, containerCode: string, piece: "front" | "rear"): number | null {
+  const name = containerNamed(containerCode);
+  return name === undefined ? null : usableArrival(sku, name, piece);
+}
+
+/** pairsAfter() for the container with the given code, e.g. "FM02". */
+export function pairsAfterContainer(sku: string, containerCode: string): number | null {
+  const name = containerNamed(containerCode);
+  return name === undefined ? null : pairsAfter(sku, name, false);
+}
+
 export function floorMatTotalStock(sku: string): number | null {
   return currentView?.totalStockBySku.get(sku) ?? null;
 }

@@ -15,7 +15,9 @@ import {
   floorMatTotalStock,
   looseSetsOrdered,
   pairsAfter,
+  pairsAfterContainer,
   usableArrival,
+  usableArrivalIn,
 } from "@/lib/planning/floor-mat-dashboard";
 
 export const TINT_COLORS: Record<string, string> = {
@@ -342,7 +344,18 @@ export const ALL_COLS: ColDef[] = [
   { id: "fm_third",       grp: "fmset", label: "3rd Row",          w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.thirdRows.map((row) => row.sku) ?? []) },
   { id: "fm_third_stock", grp: "fmset", label: "3rd Row\nStock",   w: 52,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines((r.fm_set?.thirdRows ?? []).map((row) => String(floorMatTotalStock(row.sku) ?? "—"))) },
   { id: "fm_old",         grp: "fmset", label: "Old Set\nSKU",     w: 150, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.oldSetSkus ?? []) },
+  // The planning sheet's fixed columns for the FM02 and FM03 containers, side
+  // by side on the master row so a mismatched pair is easy to spot. The same
+  // figures as 1st Usable / 2nd Usable / Pairs After inside those two
+  // container blocks; blank once the container is no longer incoming. Pairing
+  // itself still runs for every container.
+  { id: "fm02_1st",       grp: "fmset", label: "FM02\n1st",        w: 48,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => usableArrivalIn(r.sku, "FM02", "front") ?? "" },
+  { id: "fm02_2nd",       grp: "fmset", label: "FM02\n2nd",        w: 48,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => usableArrivalIn(r.sku, "FM02", "rear") ?? "" },
+  { id: "fm03_1st",       grp: "fmset", label: "FM03\n1st",        w: 48,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => usableArrivalIn(r.sku, "FM03", "front") ?? "" },
+  { id: "fm03_2nd",       grp: "fmset", label: "FM03\n2nd",        w: 48,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => usableArrivalIn(r.sku, "FM03", "rear") ?? "" },
   { id: "fm_pairs",       grp: "fmset", label: "Current\nPairs",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", bold: true, val: (r) => pairingCell(r, (m) => m.pairs[0]), sortVal: (r) => floorMatMaster(r.sku)?.pairs[0] ?? -1 },
+  { id: "fm_pairs_fm02",  grp: "fmset", label: "Pairs after\nFM02", w: 60, align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairsAfterContainer(r.sku, "FM02") ?? "", sortVal: (r) => pairsAfterContainer(r.sku, "FM02") ?? -1 },
+  { id: "fm_pairs_fm03",  grp: "fmset", label: "Pairs after\nFM03", w: 60, align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairsAfterContainer(r.sku, "FM03") ?? "", sortVal: (r) => pairsAfterContainer(r.sku, "FM03") ?? -1 },
   { id: "fm_full_p",      grp: "fmset", label: "Full Sets\nPrimary", w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.primary || "" },
   { id: "fm_full_d",      grp: "fmset", label: "Full Sets\nDtrans",  w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.dtrans || "" },
   { id: "fm_full_e",      grp: "fmset", label: "Full Sets\nEast",    w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.east || "" },
@@ -395,7 +408,7 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
  *  one place it changes. */
 export const FLOOR_MAT_COLUMN_IDS = [
   "fm_po12", "fm_po3", "fm_front", "fm_front_stock", "fm_rear", "fm_rear_stock", "fm_third", "fm_third_stock", "fm_old",
-  "fm_pairs", "fm_full_p", "fm_full_d", "fm_full_e", "fm_split_p", "fm_split_d", "fm_split_e",
+  "fm02_1st", "fm02_2nd", "fm03_1st", "fm03_2nd", "fm_pairs", "fm_pairs_fm02", "fm_pairs_fm03", "fm_full_p", "fm_full_d", "fm_full_e", "fm_split_p", "fm_split_d", "fm_split_e",
   "fm_front_need", "fm_rear_need", "fm_gap", "fm_lost_1", "fm_lost_2", "fm_free_1", "fm_free_2",
 ] as const;
 
@@ -1045,15 +1058,23 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
     if (baseColumnIds.has(id) && !floorMatColumnIds.has(id)) lastBaseIndex = index;
   });
   if (lastBaseIndex >= 0) {
-    let insertAt = lastBaseIndex + 1;
+    // A set column added later (the fixed FM02 / FM03 ones) joins the set
+    // columns the order already has, wherever the user moved them: right after
+    // the one that precedes it in the canonical list, or before the first one
+    // that follows it. Only an order with none of them gets the block after
+    // the last base column.
+    let previous: string | null = null;
     for (const columnId of FLOOR_MAT_COLUMN_IDS) {
-      const existingIndex = next.indexOf(columnId);
-      if (existingIndex >= 0) {
-        insertAt = Math.max(insertAt, existingIndex + 1);
-        continue;
+      if (!next.includes(columnId)) {
+        if (previous !== null) {
+          next.splice(next.indexOf(previous) + 1, 0, columnId);
+        } else {
+          const following = FLOOR_MAT_COLUMN_IDS.find((id) => next.includes(id));
+          const baseIndex = next.findLastIndex((id) => baseColumnIds.has(id) && !floorMatColumnIds.has(id));
+          next.splice(following ? next.indexOf(following) : baseIndex + 1, 0, columnId);
+        }
       }
-      next.splice(insertAt, 0, columnId);
-      insertAt += 1;
+      previous = columnId;
     }
   }
   if (!next.includes("loose_on_hand") && next.includes("total")) {

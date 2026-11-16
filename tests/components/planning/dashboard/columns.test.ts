@@ -108,6 +108,22 @@ describe("floor mat columns", () => {
     expect(conSubColumnAppliesToCategories("avail", ["sc"])).toBe(true);
   });
 
+  it("has the sheet's fixed FM02 / FM03 columns around Current Pairs, in the sheet's order", () => {
+    const ids = ALL_COLS.map((column) => column.id);
+    const from = ids.indexOf("fm02_1st");
+    expect(ids.slice(from, from + 7)).toEqual([
+      "fm02_1st", "fm02_2nd", "fm03_1st", "fm03_2nd", "fm_pairs", "fm_pairs_fm02", "fm_pairs_fm03",
+    ]);
+    expect(ALL_COLS.find((column) => column.id === "fm_pairs_fm02")?.label).toBe("Pairs after\nFM02");
+  });
+
+  it("adds the fixed columns next to their neighbours in an order saved before they existed", () => {
+    // A user who moved the set columns next to Master SKU keeps them there.
+    const before = FLOOR_MAT_COLUMN_IDS.filter((id) => !/^fm0[23]_|^fm_pairs_fm0/.test(id));
+    const migrated = ensureAdditionalNotesInColumnOrder(["sku", ...before, "total", "sod"]);
+    expect(migrated).toEqual(["sku", ...FLOOR_MAT_COLUMN_IDS, "loose_on_hand", "total", "sod"]);
+  });
+
   it("puts Loose Sets Ordered between Rem. Qty and Open Orders, as on the planning sheet", () => {
     const ids = CON_SUBCOLS.map((column) => column.id);
     expect(ids.indexOf("loose")).toBe(ids.indexOf("remaining") + 1);

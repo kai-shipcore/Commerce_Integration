@@ -7,8 +7,10 @@ import {
   looseSetsOrdered,
   looseSetsOrderedIsSplit,
   pairsAfter,
+  pairsAfterContainer,
   setFloorMatView,
   usableArrival,
+  usableArrivalIn,
 } from "@/lib/planning/floor-mat-dashboard";
 import type { DemandRow } from "@/types/demand-planning";
 
@@ -147,6 +149,31 @@ describe("view accessors", () => {
     expect(usableArrival("FM14230", "FM02", "front")).toBe(2);
     expect(usableArrival("FM14230", "FM02", "rear")).toBeNull();
     expect(floorMatTotalStock("T2-F533")).toBe(6);
+  });
+
+  it("feed the fixed FM02 / FM03 columns by container code", () => {
+    // Real container names carry a suffix, and another container sits between the two.
+    const rows = [
+      row({ sku: "FM14230", fm_set: set("T1-F509", "T2-F533"), total_avg_curr: 0.076 }),
+      row({ sku: "T1-F509", ttm_available_stock: 3, orders: { "FM02-CA-FLOOR": 2, "FM03-CA-FLOOR": 1 } }),
+      row({ sku: "T2-F533", ttm_available_stock: 6 }),
+    ];
+    setFloorMatView(buildFloorMatView(rows, ["FM02-CA-FLOOR", "10-CA-FLOOR", "FM03-CA-FLOOR"], qtyFor));
+
+    expect(usableArrivalIn("FM14230", "FM02", "front")).toBe(2); // FM02 1st
+    expect(usableArrivalIn("FM14230", "FM02", "rear")).toBeNull(); // FM02 2nd: nothing ordered
+    expect(usableArrivalIn("FM14230", "FM03", "front")).toBe(1); // FM03 1st
+    expect(pairsAfterContainer("FM14230", "FM02")).toBe(5); // Pairs after FM02
+    expect(pairsAfterContainer("FM14230", "FM03")).toBe(6); // Pairs after FM03
+    // The same figures as the sub-columns inside each container block.
+    expect(pairsAfterContainer("FM14230", "FM03")).toBe(pairsAfter("FM14230", "FM03-CA-FLOOR", false));
+  });
+
+  it("leave the fixed columns blank once that container is no longer incoming", () => {
+    setFloorMatView(buildFloorMatView(FM14230_ROWS, ["FM03"], qtyFor));
+    expect(usableArrivalIn("FM14230", "FM02", "front")).toBeNull();
+    expect(pairsAfterContainer("FM14230", "FM02")).toBeNull();
+    expect(pairsAfterContainer("FM14230", "FM03")).toBe(4); // 3 on hand + the FM03 front
   });
 
   it("flag a container whose new sets are split between warehouses", () => {
