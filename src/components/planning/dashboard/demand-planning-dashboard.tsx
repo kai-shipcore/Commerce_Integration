@@ -54,6 +54,7 @@ import {
   loadSavedColumnColors,
   loadSavedColumnOrder,
   ensureAdditionalNotesInColumnOrder,
+  freezeColumnAfterHiding,
   loadSavedCellColors,
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
@@ -694,11 +695,10 @@ function cloneSkuPartFilters(filters: SkuPartFiltersByCategory): SkuPartFiltersB
   ) as SkuPartFiltersByCategory;
 }
 
-function freezeColumnForVisibility(columnVis: ColumnVisibility, currentFreeze: string): string {
-  const visible = ALL_COLS.filter((column) => columnVis[column.id] !== false);
-  return visible.some((column) => column.id === currentFreeze)
-    ? currentFreeze
-    : visible.at(-1)?.id ?? currentFreeze;
+// The Columns panel's version of the same rule the grid's hide actions use:
+// a hidden freeze column hands the freeze to its nearest shown neighbour.
+function freezeColumnForVisibility(columnVis: ColumnVisibility, currentFreeze: string, columnOrder: ColumnOrder): string {
+  return freezeColumnAfterHiding(currentFreeze, columnOrder, (id) => columnVis[id] !== false);
 }
 
 function skuFilterSummary(values: string[]) {
@@ -2823,15 +2823,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         const next = { ...current, [columnId]: current[columnId] === false };
         setGroupVis(getGroupVisibilityFromColumns(next));
 
-        const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
-        const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
-        if (!stillVisible && nextVisCols.length > 0) {
-          setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
-        }
+        const nextFreeze = freezeColumnAfterHiding(freezeUntil, columnOrder, (id) => next[id] !== false);
+        if (nextFreeze !== freezeUntil) setFreezeUntil(nextFreeze);
         return next;
       });
     },
-    [freezeUntil],
+    [columnOrder, freezeUntil],
   );
 
   const handleHideColumns = useCallback((columnIds: string[]) => {
@@ -2843,18 +2840,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       for (const columnId of ids) next[columnId] = false;
       setGroupVis(getGroupVisibilityFromColumns(next));
 
-      const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
-      const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
-      if (!stillVisible && nextVisCols.length > 0) {
-        setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
-      }
+      const nextFreeze = freezeColumnAfterHiding(freezeUntil, columnOrder, (id) => next[id] !== false);
+      if (nextFreeze !== freezeUntil) setFreezeUntil(nextFreeze);
       return next;
     });
     setSelectedColorColumns([]);
     setSelectedFullColumnIds([]);
     setSelectedAgCell(null);
     setSelectedAgCells([]);
-  }, [freezeUntil]);
+  }, [columnOrder, freezeUntil]);
 
   const handleHideContainer = useCallback((containerName: string, baseline: boolean) => {
     const nextBases = new Set(hiddenBases);
@@ -2998,10 +2992,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         ...current,
         columnVis: nextColumnVis,
         compactMode: preset === "compact",
-        freezeUntil: preset === "compact" ? "sod" : freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+        freezeUntil: preset === "compact" ? "sod" : freezeColumnForVisibility(nextColumnVis, current.freezeUntil, columnOrder),
       };
     });
-  }, [columnVisibilityItems]);
+  }, [columnOrder, columnVisibilityItems]);
 
   const handleDraftToggleContainerColumns = useCallback(() => {
     setColumnSettingsDraft((current) => {
@@ -3024,10 +3018,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         ...current,
         columnVis: nextColumnVis,
         compactMode: false,
-        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil, columnOrder),
       };
     });
-  }, []);
+  }, [columnOrder]);
 
   const handleDraftToggleColumn = useCallback((columnId: string) => {
     setColumnSettingsDraft((current) => {
@@ -3037,10 +3031,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         ...current,
         columnVis: nextColumnVis,
         compactMode: false,
-        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil, columnOrder),
       };
     });
-  }, []);
+  }, [columnOrder]);
 
   const handleDraftSkuPartFilterToggle = useCallback((
     category: BaseCategoryFilter,

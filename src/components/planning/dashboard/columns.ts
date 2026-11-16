@@ -242,38 +242,6 @@ export const ALL_COLS: ColDef[] = [
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
-  // Floor mat sets: a master's component links and how its loose 1st / 2nd
-  // Row stock pairs up. Floor Mat only (CATEGORY_SCOPED_COLUMNS). The link
-  // columns come from SKU Master; the rest from the pairing in
-  // src/lib/planning/floor-mat-pairing.ts, read through floorMatMaster().
-  { id: "fm_po12",        grp: "fmset", label: "1~2열\nPre-Order", w: 58,  align: "ctr",  tint: "t-fmset", gh: "gh-fmset", val: (r) => formatPreOrder(r.fm_set?.preOrder12) },
-  { id: "fm_po3",         grp: "fmset", label: "3열\nPre-Order",   w: 58,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => {
-    const set = r.fm_set;
-    if (!set) return "";
-    // One value per 3rd Row SKU, on the same line as that SKU.
-    return set.thirdRows.length > 0 ? cellLines(set.thirdRows.map((row) => formatPreOrder(row.preOrder) || "—")) : formatPreOrder(set.preOrder3);
-  } },
-  { id: "fm_front",       grp: "fmset", label: "Front\n(1st Row)", w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.frontSku ?? "", sortVal: (r) => r.fm_set?.frontSku ?? "" },
-  { id: "fm_front_stock", grp: "fmset", label: "1st Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.frontStock ?? -1 },
-  { id: "fm_rear",        grp: "fmset", label: "Rear\n(2nd Row)",  w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.rearSku ?? "", sortVal: (r) => r.fm_set?.rearSku ?? "" },
-  { id: "fm_rear_stock",  grp: "fmset", label: "2nd Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.rearStock ?? -1 },
-  { id: "fm_third",       grp: "fmset", label: "3rd Row",          w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.thirdRows.map((row) => row.sku) ?? []) },
-  { id: "fm_third_stock", grp: "fmset", label: "3rd Row\nStock",   w: 52,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines((r.fm_set?.thirdRows ?? []).map((row) => String(floorMatTotalStock(row.sku) ?? "—"))) },
-  { id: "fm_old",         grp: "fmset", label: "Old Set\nSKU",     w: 150, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.oldSetSkus ?? []) },
-  { id: "fm_pairs",       grp: "fmset", label: "Current\nPairs",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", bold: true, val: (r) => pairingCell(r, (m) => m.pairs[0]), sortVal: (r) => floorMatMaster(r.sku)?.pairs[0] ?? -1 },
-  { id: "fm_full_p",      grp: "fmset", label: "Full Sets\nPrimary", w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.primary || "" },
-  { id: "fm_full_d",      grp: "fmset", label: "Full Sets\nDtrans",  w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.dtrans || "" },
-  { id: "fm_full_e",      grp: "fmset", label: "Full Sets\nEast",    w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.east || "" },
-  { id: "fm_split_p",     grp: "fmset", label: "Set Split\nPrimary", w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "primary") },
-  { id: "fm_split_d",     grp: "fmset", label: "Set Split\nDtrans",  w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "dtrans") },
-  { id: "fm_split_e",     grp: "fmset", label: "Set Split\nEast",    w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "east") },
-  { id: "fm_front_need",  grp: "fmset", label: "Front units\nneeded", w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontNeeded ?? "" },
-  { id: "fm_rear_need",   grp: "fmset", label: "Rear units\nneeded",  w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearNeeded ?? "" },
-  { id: "fm_gap",         grp: "fmset", label: "Gap",              w: 40,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.gap ?? "" },
-  { id: "fm_lost_1",      grp: "fmset", label: "Lost\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostFront) },
-  { id: "fm_lost_2",      grp: "fmset", label: "Lost\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostRear) },
-  { id: "fm_free_1",      grp: "fmset", label: "Free\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeFront) },
-  { id: "fm_free_2",      grp: "fmset", label: "Free\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeRear) },
   { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
   { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },
@@ -352,12 +320,48 @@ export const ALL_COLS: ColDef[] = [
   { id: "sod",      grp: "inb", label: "S.O.D\n품절예상일", w: 82,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r, _i, u) => ({
     html: `<span class="${u === "crit" ? "sod-crit" : u === "warn" ? "sod-warn" : "sod-ok"}">${r.sod || "—"}</span>`,
   }), sortVal: (r) => r.sod ?? "" },
+  // Floor mat sets: a master's component links and how its loose 1st / 2nd
+  // Last of the base columns on purpose: the default freeze runs through
+  // S.O.D., and these are some 2,000px wide together, so anywhere earlier
+  // they would be frozen by default and leave no room to scroll. They freeze
+  // and reorder exactly like any other column once a user moves them.
+  // Row stock pairs up. Floor Mat only (CATEGORY_SCOPED_COLUMNS). The link
+  // columns come from SKU Master; the rest from the pairing in
+  // src/lib/planning/floor-mat-pairing.ts, read through floorMatMaster().
+  { id: "fm_po12",        grp: "fmset", label: "1~2열\nPre-Order", w: 58,  align: "ctr",  tint: "t-fmset", gh: "gh-fmset", val: (r) => formatPreOrder(r.fm_set?.preOrder12) },
+  { id: "fm_po3",         grp: "fmset", label: "3열\nPre-Order",   w: 58,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => {
+    const set = r.fm_set;
+    if (!set) return "";
+    // One value per 3rd Row SKU, on the same line as that SKU.
+    return set.thirdRows.length > 0 ? cellLines(set.thirdRows.map((row) => formatPreOrder(row.preOrder) || "—")) : formatPreOrder(set.preOrder3);
+  } },
+  { id: "fm_front",       grp: "fmset", label: "Front\n(1st Row)", w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.frontSku ?? "", sortVal: (r) => r.fm_set?.frontSku ?? "" },
+  { id: "fm_front_stock", grp: "fmset", label: "1st Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.frontStock ?? -1 },
+  { id: "fm_rear",        grp: "fmset", label: "Rear\n(2nd Row)",  w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => r.fm_set?.rearSku ?? "", sortVal: (r) => r.fm_set?.rearSku ?? "" },
+  { id: "fm_rear_stock",  grp: "fmset", label: "2nd Row\nStock",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearStock ?? "", sortVal: (r) => floorMatMaster(r.sku)?.rearStock ?? -1 },
+  { id: "fm_third",       grp: "fmset", label: "3rd Row",          w: 172, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.thirdRows.map((row) => row.sku) ?? []) },
+  { id: "fm_third_stock", grp: "fmset", label: "3rd Row\nStock",   w: 52,  align: "left",  tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines((r.fm_set?.thirdRows ?? []).map((row) => String(floorMatTotalStock(row.sku) ?? "—"))) },
+  { id: "fm_old",         grp: "fmset", label: "Old Set\nSKU",     w: 150, align: "left", tint: "t-fmset", gh: "gh-fmset", val: (r) => cellLines(r.fm_set?.oldSetSkus ?? []) },
+  { id: "fm_pairs",       grp: "fmset", label: "Current\nPairs",   w: 52,  align: "num",  tint: "t-fmset", gh: "gh-fmset", bold: true, val: (r) => pairingCell(r, (m) => m.pairs[0]), sortVal: (r) => floorMatMaster(r.sku)?.pairs[0] ?? -1 },
+  { id: "fm_full_p",      grp: "fmset", label: "Full Sets\nPrimary", w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.primary || "" },
+  { id: "fm_full_d",      grp: "fmset", label: "Full Sets\nDtrans",  w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.dtrans || "" },
+  { id: "fm_full_e",      grp: "fmset", label: "Full Sets\nEast",    w: 56, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.fullSets.east || "" },
+  { id: "fm_split_p",     grp: "fmset", label: "Set Split\nPrimary", w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "primary") },
+  { id: "fm_split_d",     grp: "fmset", label: "Set Split\nDtrans",  w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "dtrans") },
+  { id: "fm_split_e",     grp: "fmset", label: "Set Split\nEast",    w: 112, align: "ctr", tint: "t-fmset", gh: "gh-fmset", val: (r) => splitCell(r, "east") },
+  { id: "fm_front_need",  grp: "fmset", label: "Front units\nneeded", w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.frontNeeded ?? "" },
+  { id: "fm_rear_need",   grp: "fmset", label: "Rear units\nneeded",  w: 64, align: "num", tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.rearNeeded ?? "" },
+  { id: "fm_gap",         grp: "fmset", label: "Gap",              w: 40,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => floorMatMaster(r.sku)?.gap ?? "" },
+  { id: "fm_lost_1",      grp: "fmset", label: "Lost\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostFront) },
+  { id: "fm_lost_2",      grp: "fmset", label: "Lost\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.lostRear) },
+  { id: "fm_free_1",      grp: "fmset", label: "Free\n1st",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeFront) },
+  { id: "fm_free_2",      grp: "fmset", label: "Free\n2nd",        w: 44,  align: "num",  tint: "t-fmset", gh: "gh-fmset", val: (r) => pairingCell(r, (m) => m.freeRear) },
 ];
 
 // ── Column visibility / toolbar shared exports ───────────────────────────────
 
 export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "fmset","stock","wsales","esales","fbasales","wavg","eavg","fba","s30","tavg","oos","inb","con",
+  "stock","wsales","esales","fbasales","wavg","eavg","fba","s30","tavg","oos","inb","fmset","con",
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
@@ -583,9 +587,30 @@ export function matchesUrgencySelection(row: DemandRow, selected: UrgencyFilter[
  * over rather than dropped — hiding a column and moving another must not
  * forget where the hidden one sat.
  */
+/**
+ * The saved order after a drag. AG Grid reports displayed columns only, so
+ * the ones it left out (hidden, or not applicable to the category on screen,
+ * like the floor mat columns outside Floor Mat) have to be put back.
+ *
+ * Each goes back right after the column it followed before. They used to be
+ * appended at the very end, past the container columns: dragging anything
+ * while they were not on screen sent them to the far right of the grid the
+ * next time they were shown.
+ */
 export function mergeMovedColumnOrder(current: ColumnOrder, movedOrder: ColumnOrder): ColumnOrder {
   const moved = new Set(movedOrder);
-  return [...movedOrder, ...current.filter((id) => !moved.has(id))];
+  const leading: string[] = [];
+  const following = new Map<string, string[]>();
+  let anchor: string | null = null;
+  for (const id of current) {
+    if (moved.has(id)) {
+      anchor = id;
+      continue;
+    }
+    if (anchor === null) leading.push(id);
+    else following.set(anchor, [...(following.get(anchor) ?? []), id]);
+  }
+  return [...leading, ...movedOrder.flatMap((id) => [id, ...(following.get(id) ?? [])])];
 }
 
 export function sameColumnOrder(a: ColumnOrder, b: ColumnOrder): boolean {
@@ -996,25 +1021,6 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
   // otherwise land at the far right of the grid and in a second "Inventory"
   // run at the bottom of the column picker. Slot them after the last of the
   // original four warehouse columns instead.
-  // Floor mat set columns sit between Master SKU and the stock columns, and
-  // Loose Sets On Hand right before Total Stock, in an order saved before
-  // they existed too.
-  const skuAnchor = next.indexOf("sku");
-  if (skuAnchor >= 0) {
-    let insertAt = skuAnchor + 1;
-    for (const columnId of FLOOR_MAT_COLUMN_IDS) {
-      const existingIndex = next.indexOf(columnId);
-      if (existingIndex >= 0) {
-        insertAt = Math.max(insertAt, existingIndex + 1);
-        continue;
-      }
-      next.splice(insertAt, 0, columnId);
-      insertAt += 1;
-    }
-  }
-  if (!next.includes("loose_on_hand") && next.includes("total")) {
-    next.splice(next.indexOf("total"), 0, "loose_on_hand");
-  }
   const warehouseAnchor = Math.max(...["fullerton", "canary", "ttm", "ttm_jeff"].map((id) => next.indexOf(id)));
   if (warehouseAnchor >= 0) {
     let insertAt = warehouseAnchor + 1;
@@ -1028,7 +1034,61 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
       insertAt += 1;
     }
   }
+  // Floor mat set columns go after the last base column of an order saved
+  // before they existed (in practice right after S.O.D.), where the default
+  // freeze does not reach them; Loose Sets On Hand goes right before Total
+  // Stock.
+  const baseColumnIds = new Set(ALL_COLS.map((column) => column.id));
+  const floorMatColumnIds = new Set<string>(FLOOR_MAT_COLUMN_IDS);
+  let lastBaseIndex = -1;
+  next.forEach((id, index) => {
+    if (baseColumnIds.has(id) && !floorMatColumnIds.has(id)) lastBaseIndex = index;
+  });
+  if (lastBaseIndex >= 0) {
+    let insertAt = lastBaseIndex + 1;
+    for (const columnId of FLOOR_MAT_COLUMN_IDS) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
+    }
+  }
+  if (!next.includes("loose_on_hand") && next.includes("total")) {
+    next.splice(next.indexOf("total"), 0, "loose_on_hand");
+  }
   return next;
+}
+
+/**
+ * Where the freeze goes when columns are hidden. If the freeze column itself
+ * is still shown, nothing changes. Otherwise the frozen block just loses that
+ * column: the freeze moves to the nearest shown column before it in the
+ * display order (or, with none before, the nearest after).
+ *
+ * It used to jump to the last shown column of ALL_COLS, which has nothing to
+ * do with where the user had put the freeze: hiding the freeze column
+ * re-froze the grid through an unrelated column far to the right.
+ */
+export function freezeColumnAfterHiding(
+  freezeUntil: string,
+  columnOrder: readonly string[],
+  isShown: (columnId: string) => boolean,
+): string {
+  if (isShown(freezeUntil)) return freezeUntil;
+  const baseColumnIds = ALL_COLS.map((column) => column.id);
+  const baseColumnIdSet = new Set(baseColumnIds);
+  const ordered = columnOrder.filter((id) => baseColumnIdSet.has(id));
+  const orderedSet = new Set(ordered);
+  // Columns a saved order does not mention yet sit after the ones it does.
+  const sequence = [...ordered, ...baseColumnIds.filter((id) => !orderedSet.has(id))];
+  const index = sequence.indexOf(freezeUntil);
+  if (index < 0) return freezeUntil;
+  for (let i = index - 1; i >= 0; i -= 1) if (isShown(sequence[i])) return sequence[i];
+  for (let i = index + 1; i < sequence.length; i += 1) if (isShown(sequence[i])) return sequence[i];
+  return freezeUntil;
 }
 
 function normalizeTextFormat(value: unknown): TextFormatSettings | null {

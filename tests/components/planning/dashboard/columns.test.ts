@@ -9,6 +9,8 @@ import {
   MIN_HEADER_HEIGHT,
   MIN_ROW_HEIGHT,
   WRAPPING_ROW_COLUMN_IDS,
+  DEFAULT_FREEZE,
+  freezeColumnAfterHiding,
   CON_SUBCOLS,
   FLOOR_MAT_COLUMN_IDS,
   conSubColumnAppliesToCategories,
@@ -49,32 +51,43 @@ describe("FBA sales columns", () => {
   it("inserts new FBA columns after East columns in an existing saved order", () => {
     const migrated = ensureAdditionalNotesInColumnOrder(["sku", "e90", "epre", "wavg_p"]);
     expect(migrated).toEqual([
-      "sku", ...FLOOR_MAT_COLUMN_IDS, "e90", "epre", "f90", "f60", "f30", "f15", "f7", "fpre", "wavg_p",
+      "sku", "e90", "epre", "f90", "f60", "f30", "f15", "f7", "fpre", "wavg_p", ...FLOOR_MAT_COLUMN_IDS,
     ]);
   });
 
   it("inserts the Dream Trans and Linkone columns after the last original warehouse column", () => {
     const migrated = ensureAdditionalNotesInColumnOrder(["sku", "fullerton", "canary", "ttm", "ttm_jeff", "west", "east"]);
     expect(migrated).toEqual([
-      "sku", ...FLOOR_MAT_COLUMN_IDS, "fullerton", "canary", "ttm", "ttm_jeff", "dream_trans", "linkone", "west", "east",
+      "sku", "fullerton", "canary", "ttm", "ttm_jeff", "dream_trans", "linkone", "west", "east", ...FLOOR_MAT_COLUMN_IDS,
     ]);
   });
 
   it("leaves an order that already places the new warehouse columns alone", () => {
-    const order = ["sku", ...FLOOR_MAT_COLUMN_IDS, "dream_trans", "fullerton", "linkone", "ttm_jeff"];
+    const order = ["sku", "dream_trans", "fullerton", "linkone", "ttm_jeff", ...FLOOR_MAT_COLUMN_IDS];
     expect(ensureAdditionalNotesInColumnOrder(order)).toEqual(order);
   });
 });
 
 describe("floor mat columns", () => {
-  it("slots the set columns after Master SKU and Loose Sets On Hand before Total Stock in a saved order", () => {
-    expect(ensureAdditionalNotesInColumnOrder(["cont_info", "sku", "west", "total", "transit"])).toEqual([
-      "cont_info", "sku", ...FLOOR_MAT_COLUMN_IDS, "west", "loose_on_hand", "total", "transit",
+  it("comes last of the base columns, after S.O.D., so the default freeze does not take them in", () => {
+    const ids = ALL_COLS.map((column) => column.id);
+    expect(DEFAULT_FREEZE).toBe("sod");
+    expect(ids.indexOf("fm_po12")).toBe(ids.indexOf("sod") + 1);
+    expect(ids.slice(ids.indexOf("fm_po12"))).toEqual([...FLOOR_MAT_COLUMN_IDS]);
+    expect(ALL_GROUP_KEYS.indexOf("fmset")).toBe(ALL_GROUP_KEYS.indexOf("inb") + 1);
+  });
+
+  it("slots the set columns after the last base column of a saved order, before the containers", () => {
+    expect(
+      ensureAdditionalNotesInColumnOrder(["cont_info", "sku", "west", "total", "sod", "FM02::inb_qty", "FM02::avail"]),
+    ).toEqual([
+      "cont_info", "sku", "west", "loose_on_hand", "total", "sod", ...FLOOR_MAT_COLUMN_IDS, "FM02::inb_qty", "FM02::avail",
     ]);
   });
 
-  it("keeps a saved order that already has them", () => {
-    const order = ["sku", "fm_pairs", ...FLOOR_MAT_COLUMN_IDS.filter((id) => id !== "fm_pairs"), "loose_on_hand", "total"];
+  it("keeps a saved order that already has them, wherever the user put them", () => {
+    // Dragged next to Master SKU and frozen there: must not be moved back out.
+    const order = ["sku", "fm_pairs", ...FLOOR_MAT_COLUMN_IDS.filter((id) => id !== "fm_pairs"), "loose_on_hand", "total", "sod"];
     expect(ensureAdditionalNotesInColumnOrder(order)).toEqual(order);
   });
 
@@ -568,6 +581,69 @@ describe("mergeMovedColumnOrder", () => {
   it("is stable when nothing actually moved", () => {
     const current = ["a", "b", "c"];
     expect(sameColumnOrder(mergeMovedColumnOrder(current, current), current)).toBe(true);
+  });
+
+  it("puts an unreported column back after the column it followed, not at the far end", () => {
+    // A drag in the Seat Cover view: the floor mat columns are not on screen.
+    // They used to land after the container columns.
+    const current = ["sku", "total", "sod", "fm_front", "fm_rear", "FM02::inb_qty", "FM02::avail"];
+    const dragged = ["total", "sku", "sod", "FM02::inb_qty", "FM02::avail"];
+    expect(mergeMovedColumnOrder(current, dragged)).toEqual([
+      "total", "sku", "sod", "fm_front", "fm_rear", "FM02::inb_qty", "FM02::avail",
+    ]);
+  });
+
+  it("keeps a hidden container sub-column inside its container", () => {
+    const current = ["sku", "A::inb_qty", "A::loose", "A::avail", "B::inb_qty", "B::avail"];
+    const dragged = ["sku", "B::inb_qty", "B::avail", "A::inb_qty", "A::avail"];
+    expect(mergeMovedColumnOrder(current, dragged)).toEqual([
+      "sku", "B::inb_qty", "B::avail", "A::inb_qty", "A::loose", "A::avail",
+    ]);
+  });
+
+  it("keeps unreported columns that came first at the front", () => {
+    expect(mergeMovedColumnOrder(["hidden", "a", "b"], ["b", "a"])).toEqual(["hidden", "b", "a"]);
+  });
+
+  it("takes a column the saved order did not know yet where the grid put it", () => {
+    expect(mergeMovedColumnOrder(["a", "b"], ["a", "new", "b"])).toEqual(["a", "new", "b"]);
+  });
+});
+
+describe("freezeColumnAfterHiding", () => {
+  const shown = (hidden: string[]) => (id: string) => !hidden.includes(id);
+
+  it("leaves the freeze alone while its column is still shown", () => {
+    expect(freezeColumnAfterHiding("total", [], shown(["west", "east"]))).toBe("total");
+  });
+
+  it("moves the freeze to the nearest shown column before it in the display order", () => {
+    // Frozen through the last floor mat column, which sits right after Master SKU here.
+    const order = ["back", "status", "sku", "fm_front", "fm_rear", "fm_pairs", "total", "tavg_c", "sod"];
+    expect(freezeColumnAfterHiding("fm_pairs", order, shown(["fm_pairs"]))).toBe("fm_rear");
+    // Hiding several at once, the freeze column among them.
+    expect(freezeColumnAfterHiding("fm_pairs", order, shown(["fm_rear", "fm_pairs"]))).toBe("fm_front");
+  });
+
+  it("does not jump to an unrelated column further right", () => {
+    // The old rule picked the last shown column of ALL_COLS: here that would be S.O.D.
+    const order = ["back", "status", "sku", "fm_front", "fm_pairs", "total", "tavg_c", "sod"];
+    const next = freezeColumnAfterHiding("fm_pairs", order, shown(["fm_pairs"]));
+    expect(next).toBe("fm_front");
+    expect(next).not.toBe("sod");
+  });
+
+  it("falls forward when nothing before it is shown", () => {
+    expect(freezeColumnAfterHiding("back", ["back", "status", "sku"], shown(["back"]))).toBe("status");
+  });
+
+  it("uses the default column order when none is saved", () => {
+    // ALL_COLS order: ... back, status, sku, ...
+    expect(freezeColumnAfterHiding("sku", [], shown(["sku"]))).toBe("status");
+  });
+
+  it("ignores container and formula ids in a saved order", () => {
+    expect(freezeColumnAfterHiding("sod", ["sku", "FM02::avail", "sod"], shown(["sod"]))).toBe("sku");
   });
 });
 
