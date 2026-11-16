@@ -2,6 +2,7 @@ import { DemandPlanningService } from "@/lib/demand-planning/service";
 import {
   PlanningStatsRefreshRepository,
   type PlanningStatsRefreshPayload,
+  type PlanningStatsRefreshRequestContext,
 } from "@/lib/planning-stats-refresh/repository";
 
 function errorMessage(error: unknown): string {
@@ -32,8 +33,12 @@ function schedule(jobId: string): void {
 }
 
 export const PlanningStatsRefreshService = {
-  async queue(payload: PlanningStatsRefreshPayload) {
-    const queued = await PlanningStatsRefreshRepository.queueJob(payload);
+  listJobs(options: { limit: number; offset: number; status?: "queued" | "running" | "succeeded" | "failed" }) {
+    return PlanningStatsRefreshRepository.listJobs(options);
+  },
+
+  async queue(payload: PlanningStatsRefreshPayload, context: PlanningStatsRefreshRequestContext) {
+    const queued = await PlanningStatsRefreshRepository.queueJob(payload, context);
     if (queued.job.status === "queued") schedule(queued.job.id);
     return queued;
   },

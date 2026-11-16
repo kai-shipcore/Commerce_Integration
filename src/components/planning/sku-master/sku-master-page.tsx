@@ -129,6 +129,22 @@ type ExcelSkuImportRow = FloorMatSetImportFields & {
   salesStatus?: OverrideSalesStatus;
 };
 
+const SKU_IMPORT_TEMPLATE_HEADERS = [
+  "Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type",
+  "1st Row SKU", "2nd Row SKU", "3rd Row SKU", "1~2 Pre-Order", "3 Pre-Order", "Old Set SKU",
+] as const;
+
+const SKU_IMPORT_TEMPLATE_ROWS: ReadonlyArray<ReadonlyArray<string | number>> = [
+  ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued", "", "", "", "", "", ""],
+  ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold", "", "", "", "", "", ""],
+  [
+    "CA-FM-80-EXAMPLE", 0.0957, 5, 5, "active", "1+2 Set",
+    "CA-FM-TX-80-S1-EXAMPLE", "CA-FM-TX-80-S2-EXAMPLE",
+    "CA-FM-TX-80-S3-EXAMPLE-A|CA-FM-TX-80-S3-EXAMPLE-B", "Yes", "Yes|No", "CA-FM-80-EXAMPLE-C",
+  ],
+  ["CA-FM-TX-80-S3-EXAMPLE-A", "", "", "", "", "3rd Row", "", "", "", "", "Yes", ""],
+];
+
 type ImportPreviewValue = {
   cbmPerUnit: number | null;
   moq: number | null;
@@ -659,18 +675,8 @@ export function SkuMasterPage() {
 
   function downloadImportTemplate() {
     const worksheet = XLSX.utils.aoa_to_sheet([
-      [
-        "Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type",
-        "1st Row SKU", "2nd Row SKU", "3rd Row SKU", "1~2 Pre-Order", "3 Pre-Order", "Old Set SKU",
-      ],
-      ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued"],
-      ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold"],
-      [
-        "CA-FM-80-EXAMPLE", 0.0957, 5, 5, "active", "1+2 Set",
-        "CA-FM-TX-80-S1-EXAMPLE", "CA-FM-TX-80-S2-EXAMPLE",
-        "CA-FM-TX-80-S3-EXAMPLE-A|CA-FM-TX-80-S3-EXAMPLE-B", "Yes", "Yes|No", "CA-FM-80-EXAMPLE-C",
-      ],
-      ["CA-FM-TX-80-S3-EXAMPLE-A", "", "", "", "", "3rd Row", "", "", "", "", "Yes", ""],
+      [...SKU_IMPORT_TEMPLATE_HEADERS],
+      ...SKU_IMPORT_TEMPLATE_ROWS.map((row) => [...row]),
     ]);
     worksheet["!cols"] = [
       { wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 18 },
@@ -947,7 +953,7 @@ export function SkuMasterPage() {
       </header>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="overflow-hidden p-0 sm:max-w-4xl">
+        <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[min(96vw,1400px)]">
           <DialogHeader className="border-b border-[#e2dfd8] bg-[#f8f7f3] px-6 py-5 pr-12">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
@@ -957,51 +963,59 @@ export function SkuMasterPage() {
                 <DialogTitle>{pick("SKU Master 엑셀 가져오기", "SKU Master Excel Import")}</DialogTitle>
                 <DialogDescription>
                   {pick(
-                    "아래 템플릿 형식으로 SKU별 CBM, MOQ, 주문 배수, Status, Type을 준비해 주세요.",
-                    "Prepare CBM, MOQ, order multiple, Status, and Type values for each SKU using the template below."
+                    "일반 SKU 기준값과 Floor Mat Type·세트 연결 정보를 같은 템플릿에서 가져올 수 있습니다. 아래 형식과 예시를 확인해 주세요.",
+                    "Import regular SKU reference values and Floor Mat Types and set links from the same template. Review the format and examples below."
                   )}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="space-y-5 px-6 py-5">
+          <div className="space-y-5 overflow-y-auto px-6 py-5">
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-foreground">{pick("템플릿 미리보기", "Template Preview")}</h3>
-                <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
-                  {pick("첫 행 헤더 필수", "Header row required")}
-                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">{pick("현재 템플릿 미리보기", "Current Template Preview")}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {pick("오른쪽으로 스크롤하면 Floor Mat 세트 연결 컬럼과 예시를 확인할 수 있습니다.", "Scroll right to review the Floor Mat set-link columns and examples.")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                    {pick("Floor Mat 컬럼 포함", "Floor Mat columns included")}
+                  </span>
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+                    {pick("첫 행 헤더 필수", "Header row required")}
+                  </span>
+                </div>
               </div>
               <div className="overflow-x-auto rounded-lg border border-[#d8d6ce]">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[2020px] border-collapse text-left text-sm">
                   <thead className="bg-[#292724] text-white">
                     <tr>
-                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Master SKU</th>
-                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">CBM</th>
-                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">MOQ</th>
-                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Order Multiple</th>
-                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Status</th>
-                      <th className="px-4 py-2.5 font-semibold">Type</th>
+                      {SKU_IMPORT_TEMPLATE_HEADERS.map((header, index) => (
+                        <th
+                          key={header}
+                          className={`whitespace-nowrap border-r border-white/15 px-4 py-2.5 font-semibold last:border-r-0 ${index >= 6 ? "bg-emerald-900" : ""}`}
+                        >
+                          {header}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="font-mono text-xs">
-                    <tr className="border-t border-[#e2dfd8] bg-white">
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-001</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.012345</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">12</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">6</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">active</td>
-                      <td className="px-4 py-2.5">Discontinued</td>
-                    </tr>
-                    <tr className="border-t border-[#e2dfd8] bg-[#faf9f6]">
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-002</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.023456</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">10</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">5</td>
-                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">inactive</td>
-                      <td className="px-4 py-2.5">Hold</td>
-                    </tr>
+                    {SKU_IMPORT_TEMPLATE_ROWS.map((row, rowIndex) => (
+                      <tr key={String(row[0])} className={`border-t border-[#e2dfd8] ${rowIndex % 2 === 0 ? "bg-white" : "bg-[#faf9f6]"}`}>
+                        {SKU_IMPORT_TEMPLATE_HEADERS.map((header, columnIndex) => (
+                          <td
+                            key={header}
+                            className={`whitespace-nowrap border-r border-[#e2dfd8] px-4 py-2.5 last:border-r-0 ${columnIndex >= 6 ? "bg-emerald-50/40" : ""}`}
+                          >
+                            {row[columnIndex] === "" ? <span className="text-slate-300">—</span> : row[columnIndex]}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1012,14 +1026,14 @@ export function SkuMasterPage() {
                 <li>{pick("지원 파일: .xlsx, .xls 또는 .csv", "Supported files: .xlsx, .xls, or .csv")}</li>
                 <li>{pick("Master SKU는 필수이며, 나머지는 입력된 컬럼만 업데이트됩니다.", "Master SKU is required; only populated value columns are updated.")}</li>
                 <li>{pick("CBM은 0보다 큰 숫자, MOQ와 주문 배수는 1 이상의 정수로 입력해 주세요.", "CBM must be greater than zero; MOQ and Order Multiple must be integers of at least 1.")}</li>
-                <li>{pick("Status는 active 또는 inactive, Type은 Hold, Discontinued 또는 TBD를 입력해 주세요.", "Status accepts active or inactive; Type accepts Hold, Discontinued, or TBD.")}</li>
+                <li>{pick("Status는 active 또는 inactive를 사용합니다. Type은 일반 상태(Hold, Discontinued, TBD) 또는 Floor Mat 유형을 입력합니다.", "Status accepts active or inactive. Type accepts a general status (Hold, Discontinued, TBD) or a Floor Mat type.")}</li>
                 <li>{pick(
-                  "플로어매트 SKU는 Type에 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, 3rd Row도 쓸 수 있고, 선택 컬럼 1st Row SKU, 2nd Row SKU, 3rd Row SKU, 1~2 Pre-Order, 3 Pre-Order, Old Set SKU를 추가할 수 있습니다 (템플릿 참고).",
-                  "Floor mat SKUs also accept Type 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, or 3rd Row, and the optional columns 1st Row SKU, 2nd Row SKU, 3rd Row SKU, 1~2 Pre-Order, 3 Pre-Order, and Old Set SKU (see the template)."
+                  "Floor Mat Type은 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, 3rd Row입니다. 세트 SKU 행에는 오른쪽 6개 컬럼으로 부품 SKU와 Pre-Order 여부를 연결합니다.",
+                  "Floor Mat types are 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, and 3rd Row. On a set SKU row, use the six columns on the right to link component SKUs and Pre-Order availability."
                 )}</li>
                 <li>{pick(
-                  "3rd Row SKU가 여러 개면 한 셀에 | 또는 줄바꿈으로 구분하고, 3 Pre-Order는 같은 순서로 Yes/No를 적어 주세요.",
-                  "For several 3rd Row SKUs, separate them in one cell with | or a line break, and list 3 Pre-Order as Yes/No in the same order."
+                  "여러 3rd Row SKU와 Old Set SKU는 | 또는 줄바꿈으로 구분합니다. 3 Pre-Order의 Yes/No는 3rd Row SKU와 같은 순서·개수로 입력해 주세요.",
+                  "Separate multiple 3rd Row and Old Set SKUs with | or line breaks. Enter 3 Pre-Order Yes/No values in the same order and count as the 3rd Row SKUs."
                 )}</li>
                 <li>{pick("동일 SKU가 여러 번 나오면 우선순위가 높은 시트의 값이 적용됩니다.", "If a SKU appears more than once, the value from the higher-priority sheet is used.")}</li>
               </ul>

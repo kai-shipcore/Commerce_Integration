@@ -1,5 +1,55 @@
+  <h3 id="sku-master-floor-mat-sets">④ Manage Floor Mat Set Links</h3>
+  <p>A finished Floor Mat set SKU can be different from the loose 1st Row, 2nd Row, and 3rd Row SKUs kept in inventory. Use set links to record <strong>which component SKUs belong to each finished set</strong>. Demand Planning uses these links to calculate Floor Mat set stock and available pairs.</p>
 
-  <h3 id="sku-master-toolbar">④ Search, Filters, and CSV Export</h3>
+  <div class="callout info"><span class="callout-icon">💡</span><div><b>Quick workflow:</b> Filter Product to <strong>Floor Mat</strong> → find the set SKU → click <span class="btn-label">Edit</span> → enter Type and set links → click <span class="btn-label">Done</span>.</div></div>
+
+  <h3 class="sub">1. Choose the Type first</h3>
+  <table class="feat-table">
+    <tr><th style="width:170px">Type</th><th>Meaning</th><th>Use it for</th></tr>
+    <tr><td class="label">1+2 Set</td><td>A finished set with rows 1 and 2</td><td>The Master Set SKU sold as a 1st + 2nd Row set</td></tr>
+    <tr><td class="label">1+2+3 Set</td><td>A finished set with rows 1, 2, and 3</td><td>The Master Set SKU that also includes a 3rd Row piece</td></tr>
+    <tr><td class="label">1st Row</td><td>A 1st Row component SKU</td><td>The Front component inventory used to build a set</td></tr>
+    <tr><td class="label">2nd Row</td><td>A 2nd Row component SKU</td><td>The Rear component inventory used to build a set</td></tr>
+    <tr><td class="label">3rd Row</td><td>A 3rd Row component SKU</td><td>An additional 3rd Row component</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-icon">💡</span><div>These five Types are available only for <strong>Floor Mat SKUs</strong>. Hold, Discontinued, and TBD continue to work for the other products.</div></div>
+
+  <h3 class="sub">2. Link components to a set SKU</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Find the set and start editing</h4><p>Filter Product to Floor Mat, search for the finished set SKU, and click <span class="btn-label">Edit</span>. A blue set-link editor opens below the row.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Enter the 1st and 2nd Row SKUs</h4><p>Enter the <strong>1st Row (Front) SKU</strong>, then the <strong>2nd Row (Rear) SKU</strong> when the set has one. A 2nd Row link requires a 1st Row link.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Choose Pre-Order availability</h4><p>Set <strong>1~2 Row Pre-Order?</strong> to Yes or No. Leave it as <strong>—</strong> when it has not been decided.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Add 3rd Row SKUs when needed</h4><p>Click <span class="btn-label">+ Add 3rd Row SKU</span>, then enter the SKU and its Pre-Order value. Add more than one when needed, use ↑ and ↓ to reorder them, and ✕ to remove one.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Enter old set SKUs</h4><p>Enter any previous set SKUs in <strong>Old Set SKU</strong>, one per line. They are used when old set inventory must be included in the current set calculation.</p></div></div>
+    <div class="step"><div class="step-num">6</div><div><h4>Save</h4><p>Review the links and click <span class="btn-label">Done</span>. The saved set summary appears below the row.</p></div></div>
+  </div>
+
+  <h3 class="sub">Rules to follow</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Rule</th><th>What it means</th></tr>
+    <tr><td class="label">Floor Mat only</td><td>Set links can be saved only for Floor Mat SKUs beginning with <code>CA-FM-</code>.</td></tr>
+    <tr><td class="label">2nd Row needs a 1st Row</td><td>You cannot link only a 2nd Row SKU. Enter the 1st Row SKU first.</td></tr>
+    <tr><td class="label">No duplicate components</td><td>The 1st and 2nd Row cannot be the same SKU. A 3rd Row SKU cannot be repeated or also used as the 1st or 2nd Row.</td></tr>
+    <tr><td class="label">No self-link</td><td>A finished set SKU cannot link to itself as a component.</td></tr>
+    <tr><td class="label">Unknown SKU warning</td><td>A component missing from SKU Master can still be entered, but review the warning carefully because it may be a typo.</td></tr>
+  </table>
+
+  <h3 class="sub">3. Import many sets with Excel</h3>
+  <p>Use <span class="btn-label">Excel Import</span> → <span class="btn-label">Download Template</span> to maintain Floor Mat links together with CBM, MOQ, and the other SKU Master values.</p>
+  <table class="feat-table">
+    <tr><th style="width:190px">Excel column</th><th>How to enter it</th></tr>
+    <tr><td class="label">Type</td><td>Use <code>1+2 Set</code>, <code>1+2+3 Set</code>, <code>1st Row</code>, <code>2nd Row</code>, or <code>3rd Row</code>.</td></tr>
+    <tr><td class="label">1st Row SKU</td><td>Enter one 1st Row component SKU.</td></tr>
+    <tr><td class="label">2nd Row SKU</td><td>Enter one 2nd Row component SKU, or leave it blank when there is none.</td></tr>
+    <tr><td class="label">3rd Row SKU</td><td>Separate several values with <code>|</code> or line breaks, for example <code>SKU-A|SKU-B</code>.</td></tr>
+    <tr><td class="label">1~2 Pre-Order</td><td>Enter <code>Yes</code> or <code>No</code>.</td></tr>
+    <tr><td class="label">3 Pre-Order</td><td>For several 3rd Row SKUs, list Yes/No values in the same order, for example <code>Yes|No</code>.</td></tr>
+    <tr><td class="label">Old Set SKU</td><td>Separate several values with <code>|</code> or line breaks.</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>3rd Row order matters.</b> If 3rd Row SKU is <code>SKU-A|SKU-B</code>, the first 3 Pre-Order value belongs to SKU-A and the second belongs to SKU-B. When the counts do not match, that row's 3rd Row Pre-Order values are skipped and a warning appears in the preview; the row's other valid changes can still be applied.</div></div>
+  <div class="callout info"><span class="callout-icon">🔎</span><div><b>Review before applying:</b> Choosing a file does not save immediately. Check Type, <strong>Set Links</strong>, and unknown linked-SKU warnings in the change preview, then click <span class="btn-label">Confirm &amp; Apply</span>.</div></div>
+
+  <h3 id="sku-master-toolbar">⑤ Search, Filters, and CSV Export</h3>
   <p>Use the top toolbar to find SKUs quickly and save the current result set for review or bulk maintenance.</p>
   <table class="feat-table">
     <tr><th style="width:180px">Feature</th><th>How to use it</th><th>What to know</th></tr>
@@ -9,7 +59,7 @@
   </table>
   <div class="callout tip"><span class="callout-icon">💡</span><div><b>Can the export be imported again?</b> Yes. It contains the Master SKU, CBM, MOQ, and Order Multiple columns recognized by Excel Import. Extra columns are ignored. Sales Type is not currently included in the CSV export.</div></div>
 
-  <h3 id="sku-master-inventory-sync">⑤ Sync Inventory — Refresh the SKU List</h3>
+  <h3 id="sku-master-inventory-sync">⑥ Sync Inventory — Refresh the SKU List</h3>
   <p><span class="btn-label">Sync Inventory</span> reads Master SKUs from <code>ecommerce_data.coverland_inventory_by_warehouse</code> and adds or updates records in <code>shipcore.fc_products</code>. SKU Master edit permission is required.</p>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div><h4>Start the sync</h4><p>Make sure no one is in the middle of a bulk edit, then click <span class="btn-label">Sync Inventory</span>.</p></div></div>
@@ -27,7 +77,7 @@
   </table>
   <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Inactive SKU warning:</b> An inactive SKU that still exists in the inventory source can become active again after synchronization. Review <strong>All Status</strong> after the sync.</div></div>
 
-  <h3 id="sku-master-excel-import">⑥ Excel/CSV Import — Update Reference Values in Bulk</h3>
+  <h3 id="sku-master-excel-import">⑦ Excel/CSV Import — Update Reference Values in Bulk</h3>
   <p><span class="btn-label">Excel Import</span> adds or updates <strong>CBM, MOQ, and Order Multiple</strong> for many SKUs. It accepts <code>.xlsx</code>, <code>.xls</code>, and <code>.csv</code> files and requires SKU Master edit permission.</p>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div><h4>Prepare a template</h4><p>Download the template or prepare headers in an existing file. <strong>Master SKU</strong> is required, with at least one valid CBM, MOQ, or Order Multiple value.</p></div></div>
@@ -45,7 +95,7 @@
   <div class="callout info"><span class="callout-icon">🧾</span><div><b>When importing a new SKU:</b> Missing reference values are filled with defaults inferred from the SKU pattern. Product details, case quantity, and weight are also created. Always verify the preview's final values.</div></div>
   <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Duplicates and multiple sheets:</b> Only one row is used for a duplicate SKU. With duplicate SKUs across sheets, sheet priority and CBM precision may determine which row wins. For critical imports, keep one row per SKU in a single template sheet.</div></div>
 
-  <h3 id="sku-master-price-history">⑦ Price History — Review Factory-specific Effective Prices</h3>
+  <h3 id="sku-master-price-history">⑧ Price History — Review Factory-specific Effective Prices</h3>
   <p>Click <span class="btn-label">Price</span> or click a row while it is not being edited to open the right-side drawer. The feature is visible only to users with <strong>Invoice Price Control read permission</strong>.</p>
   <table class="feat-table">
     <tr><th style="width:190px">Area</th><th>How it works</th></tr>
@@ -58,7 +108,7 @@
   </table>
   <div class="callout tip"><span class="callout-icon">💡</span><div><b>No Price button?</b> Ask an administrator to check <strong>Invoice Price Control → Read</strong>. Create, edit, and delete actions are also shown independently according to permission.</div></div>
 
-  <h3 id="sku-master-troubleshooting">⑧ Troubleshooting</h3>
+  <h3 id="sku-master-troubleshooting">⑨ Troubleshooting</h3>
   <table class="feat-table">
     <tr><th style="width:240px">Symptom</th><th>What to check</th></tr>
     <tr><td class="label">A SKU is missing</td><td>Change the default Active filter to <strong>All Status</strong>, then clear search, product, and sales type filters.</td></tr>

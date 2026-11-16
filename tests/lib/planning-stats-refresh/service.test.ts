@@ -23,6 +23,12 @@ vi.mock("@/lib/demand-planning/service", () => ({
 const { PlanningStatsRefreshService } = await import("@/lib/planning-stats-refresh/service");
 
 const job = { id: "11111111-1111-4111-8111-111111111111", status: "queued" };
+const requestContext = {
+  requestedBy: "user-1",
+  requestedByEmail: "planner@shipcore.com",
+  source: "/forecast/planning/dashboard-ag-grid",
+  correlationId: "22222222-2222-4222-8222-222222222222",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,7 +39,9 @@ describe("PlanningStatsRefreshService.queue", () => {
     queueJobMock.mockResolvedValue({ job, created: true });
     markRunningMock.mockResolvedValue(null);
 
-    await PlanningStatsRefreshService.queue({});
+    await PlanningStatsRefreshService.queue({}, requestContext);
+
+    expect(queueJobMock).toHaveBeenCalledWith({}, requestContext);
 
     await vi.waitFor(() => expect(markRunningMock).toHaveBeenCalledWith(job.id));
   });
@@ -41,7 +49,7 @@ describe("PlanningStatsRefreshService.queue", () => {
   it("does not schedule duplicate work when a running job is reused", async () => {
     queueJobMock.mockResolvedValue({ job: { ...job, status: "running" }, created: false });
 
-    await PlanningStatsRefreshService.queue({});
+    await PlanningStatsRefreshService.queue({}, requestContext);
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(markRunningMock).not.toHaveBeenCalled();
@@ -53,7 +61,7 @@ describe("PlanningStatsRefreshService.queue", () => {
     const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
     refreshStatsMock.mockResolvedValue(result);
 
-    await PlanningStatsRefreshService.queue({});
+    await PlanningStatsRefreshService.queue({}, requestContext);
 
     await vi.waitFor(() => expect(markSucceededMock).toHaveBeenCalledWith(job.id, result));
   });
@@ -63,7 +71,7 @@ describe("PlanningStatsRefreshService.queue", () => {
     markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
     refreshStatsMock.mockRejectedValue(new Error("lookup unavailable"));
 
-    await PlanningStatsRefreshService.queue({});
+    await PlanningStatsRefreshService.queue({}, requestContext);
 
     await vi.waitFor(() => expect(markFailedMock).toHaveBeenCalledWith(job.id, "lookup unavailable"));
   });

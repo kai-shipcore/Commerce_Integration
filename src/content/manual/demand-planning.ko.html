@@ -27,7 +27,7 @@
     <tr><td class="label">카테고리 / 상품 / 긴급도</td><td>표시할 SKU 범위를 줄입니다. 여러 조건을 함께 사용하면 모든 조건을 만족하는 행만 표시됩니다.</td></tr>
     <tr><td class="label">Search</td><td>SKU 또는 화면이 지원하는 검색 대상 문자열을 입력합니다. 입력을 지우면 전체 결과로 돌아갑니다.</td></tr>
     <tr><td class="label">As of</td><td>선택한 날짜를 기준으로 판매와 재고를 다시 계산하며, S.O.D.·재고 수명·컨테이너 체인의 시작점도 함께 옮겨집니다. 운송 중 재고와 Remaining/Mistake, 컨테이너 목록은 이력이 없어 현재 값 그대로이고, 창고별 재고는 재고 이력이 SKU 합계만 기록해 &mdash;로 표시됩니다. 이력이 온전히 닿지 않는 날짜는 선택할 수 없습니다. 오늘이 아닌 날짜를 선택했다면 분석 기준일을 먼저 확인하세요.</td></tr>
-    <tr><td class="label">Sync</td><td>최신 원천 데이터를 불러와 판매·재고·OOS 관련 계산을 갱신합니다.</td></tr>
+    <tr><td class="label">Sync</td><td>확인 화면에서 작업 범위를 검토한 뒤 백그라운드 동기화를 시작합니다. 보통 3~5분이 걸리며, 진행 상태와 결과는 <strong>동기화 이력</strong>에서 확인할 수 있습니다. 자세한 사용법은 아래 ⑱을 참고하세요.</td></tr>
     <tr><td class="label">Export / Import</td><td>현재 조회 결과를 내보내거나 지원되는 운송 중 재고 파일을 가져옵니다. 가져오기 화면의 미리보기와 오류를 확인한 후 적용하세요.</td></tr>
     <tr><td class="label">환경 설정 / SKU 개수</td><td>글꼴·채우기 색상 아이콘과 같은 크기의 독립된 <strong>환경 설정(⚙)</strong> 버튼이 표시되고, 그 오른쪽의 별도 영역에 현재 필터와 숨김 조건을 통과한 SKU 개수가 나타납니다. 환경 설정 팝업은 컬럼 설정 팝업과 같은 위치에서 열립니다.</td></tr>
   </table>
@@ -73,7 +73,7 @@
   <table class="feat-table">
     <tr><th style="width:190px">작업</th><th>방법</th><th>저장</th></tr>
     <tr><td class="label">헤더 이름 변경</td><td>일반 헤더 또는 상단 그룹/컨테이너 헤더를 <strong>더블클릭</strong>하고 큰 입력창에 이름을 입력합니다. Enter는 저장, Esc는 취소입니다. 빈 이름으로 저장하면 기본 이름으로 돌아갑니다.</td><td>사용자별 저장</td></tr>
-    <tr><td class="label">컬럼 순서 변경</td><td>일반 컬럼은 개별 헤더를 원하는 위치로 드래그합니다. <strong>컨테이너 이름이 있는 그룹 헤더</strong>를 드래그하면 Con. Qty, Rem. Qty, Open Orders, Avail Qty, Est. Sales, Back Order, Carry over, Inv. Life, EST. SOD, Plan SOD, CBM이 한 묶음으로 이동합니다.</td><td>사용자별 저장</td></tr>
+    <tr><td class="label">컬럼 순서 변경</td><td>일반 컬럼은 개별 헤더를 원하는 위치로 드래그합니다. <strong>컨테이너 이름이 있는 그룹 헤더</strong>를 드래그하면 CBM부터 Plan SOD까지 하위 컬럼 전체가 한 묶음으로 이동합니다. Floor Mat에서는 Loose Sets Ordered, 1st/2nd Usable, Pairs After도 같은 묶음에 포함됩니다.</td><td>사용자별 저장</td></tr>
     <tr><td class="label">컬럼 너비 변경</td><td>헤더 오른쪽 경계를 드래그합니다. 헤더·데이터 셀·요약/합계 영역이 같은 너비로 함께 변경됩니다.</td><td>모든 컬럼을 사용자별 저장</td></tr>
     <tr><td class="label">컬럼 고정</td><td><span class="btn-label">⊞ 컬럼 ▾</span>의 <strong>컬럼 고정</strong>에서 고정 끝점을 선택합니다. 선택한 컬럼까지 왼쪽에 고정됩니다.</td><td>사용자별 저장</td></tr>
     <tr><td class="label">너비 초기화</td><td>컬럼 설정의 <span class="btn-label">너비 초기화</span>를 누르고 확인 창에서 승인합니다. Next ETA, EST. SOD, Plan SOD는 기본 글꼴 10px과 날짜가 보이도록 지정된 기본 너비로 돌아갑니다.</td><td>기본값으로 갱신</td></tr>
@@ -146,7 +146,7 @@
   <div class="callout warn"><span class="callout-icon">🔒</span><div>편집 권한이 없는 사용자는 데이터를 조회·정렬·필터할 수 있지만 CBM, Note, ETA, Con. Qty 및 저장 작업은 제한될 수 있습니다.</div></div>
 
   <h3 id="dp-containers">⑧ 컨테이너 계획과 자동 계산</h3>
-  <p>각 컨테이너에는 Con. Qty, 잔여 재고, 오픈 오더, 가용 수량, 예상 판매, 백오더, 이월 수량, Inv. Life, EST. SOD, Plan SOD, CBM 등 계획용 하위 컬럼이 표시됩니다. 일부는 입력값이고 나머지는 앞 컨테이너와 ETA를 이어 계산한 결과입니다.</p>
+  <p>각 컨테이너에는 <strong>CBM이 맨 앞</strong>에 표시되고, Con. Qty, 잔여 재고, 오픈 오더, 가용 수량, 예상 판매, 백오더, 이월 수량, Inv. Life, EST. SOD, Plan SOD가 이어집니다. Floor Mat에서는 세트 조립 가능 수량을 설명하는 하위 컬럼이 추가됩니다. 일부는 입력값이고 나머지는 앞 컨테이너와 ETA를 이어 계산한 결과입니다.</p>
   <table class="feat-table">
     <tr><th style="width:180px">기능</th><th>설명</th></tr>
     <tr><td class="label">고정 목표 계산 📅</td><td>헤더의 목표 일수(기본 90일)를 사용해 SKU별 Con. Qty 초안을 계산합니다.</td></tr>
@@ -159,7 +159,7 @@
   <h3 id="dp-key-columns">⑨ 주요 컬럼 읽는 법</h3>
   <table class="feat-table">
     <tr><th style="width:190px">컬럼</th><th>의미</th></tr>
-    <tr><td class="label">West / East / Transit / Total</td><td>서부 가용재고, 동부 가용재고, 운송 중 재고와 전체 재고입니다. Total은 서부 + 동부 + 운송 중 기준입니다.</td></tr>
+    <tr><td class="label">창고별 / West / East / Transit / Total</td><td>West는 Fullerton + Canary + Dream Trans + Linkone, East는 TTM + TTM Jeff의 가용재고입니다. Total은 West + East + Transit 기준입니다. Floor Mat 완성 세트는 Loose Sets On Hand도 Total에 포함됩니다.</td></tr>
     <tr><td class="label">W/E/Total Avg</td><td>지역 또는 전체 일평균 판매량입니다. Previous, Actual, Current 값은 이전 기준·실측·현재 적용값을 구분합니다.</td></tr>
     <tr><td class="label">Next ETA</td><td>다음 입고 예정일입니다. 기본 글꼴 10px과 확장된 기본 너비를 사용해 날짜가 잘리지 않도록 설정되어 있습니다.</td></tr>
     <tr><td class="label">S.O.D / EST. SOD / Plan SOD</td><td>재고 소진 예상일입니다. 일반 S.O.D는 현재 재고 기준, EST. SOD와 Plan SOD는 컨테이너 흐름과 계획 수량을 반영한 날짜입니다.</td></tr>

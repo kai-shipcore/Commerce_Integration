@@ -95,6 +95,7 @@ import type {
 import { ScenarioTabBar } from "./scenario-tab-bar";
 import { ToolbarMultiSelect, type ToolbarMultiSelectOption } from "./toolbar-multi-select";
 import { ApplyToLiveDialog } from "./apply-to-live-dialog";
+import { SyncHistoryDialog } from "./sync-history-dialog";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
   DEFAULT_SEASONAL_FACTORS,
@@ -908,6 +909,61 @@ function EditMenuItem({
       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{icon}{label}</span>
       <span style={{ fontSize: 11, color: "#94A3B8" }}>{shortcut}</span>
     </button>
+  );
+}
+
+function SyncConfirmationDialog({
+  children,
+  onConfirm,
+}: {
+  children: ReactNode;
+  onConfirm: () => void;
+}) {
+  const { pick } = useI18n();
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
+      <AlertDialogContent className="sm:max-w-xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{pick("Demand Planning 동기화를 시작할까요?", "Start Demand Planning Sync?")}</AlertDialogTitle>
+          <AlertDialogDescription className="leading-6">
+            {pick(
+              "최신 원본 데이터를 가져와 Demand Planning 통계를 다시 계산합니다.",
+              "This pulls the latest source data and recalculates Demand Planning statistics.",
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="space-y-4 text-sm">
+          <div className="rounded-md border bg-muted/35 p-4">
+            <div className="mb-2 font-semibold text-foreground">{pick("실행 작업", "What this Sync does")}</div>
+            <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
+              <li>{pick("판매 스냅샷과 창고별 재고를 최신 데이터로 갱신", "Refresh sales snapshots and warehouse inventory")}</li>
+              <li>{pick("Transit 재고와 품절 이력·손실 수요를 다시 계산", "Reconcile transit stock and recalculate OOS history and lost demand")}</li>
+              <li>{pick("Link/Custom 판매 통계와 일평균 판매량을 다시 계산", "Recalculate Link/Custom sales statistics and daily averages")}</li>
+              <li>{pick("누락된 Master SKU를 보완하고 화면 캐시를 갱신", "Backfill missing Master SKUs and refresh dashboard caches")}</li>
+              <li>{pick("Container 정보를 Workbench System으로 동기화", "Sync Container information to the Workbench System")}</li>
+            </ul>
+          </div>
+
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-950">
+            <div className="font-semibold">{pick("시작 전 확인", "Before you continue")}</div>
+            <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-5">
+              <li>{pick("보통 3~5분 정도 걸리며 데이터 양이나 다른 Sync 작업에 따라 더 오래 걸릴 수 있습니다.", "This usually takes 3–5 minutes and may take longer depending on data volume or another Sync job.")}</li>
+              <li>{pick("확인 후 브라우저를 닫거나 다른 페이지로 이동해도 서버 작업은 계속됩니다.", "After confirmation, closing the browser or leaving this page does not cancel the server job.")}</li>
+              <li>{pick("전체 작업은 하나의 트랜잭션이 아닙니다. 서버가 재시작되거나 작업이 실패하면 일부 단계만 반영될 수 있습니다.", "The full pipeline is not one transaction. A server restart or failure can leave some steps applied.")}</li>
+              <li>{pick("실패 시 Sync History에서 오류를 확인한 뒤 다시 실행하세요. 재실행하면 현재 데이터를 기준으로 다시 계산됩니다.", "If it fails, review Sync History and run it again. A rerun recalculates from the current source data.")}</li>
+            </ul>
+          </div>
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>{pick("취소", "Cancel")}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>{pick("확인 후 Sync 시작", "Confirm and Start Sync")}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -4555,24 +4611,26 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => reload()}
-            disabled={loading}
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "5px 12px",
-              borderRadius: 4,
-              border: "1px solid #C2BFB5",
-              background: loading ? "#F5F4EF" : "#1A1917",
-              cursor: loading ? "default" : "pointer",
-              color: loading ? "#7A766F" : "#fff",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {loading ? "Loading…" : "Sync"}
-          </button>
+          <SyncHistoryDialog />
+          <SyncConfirmationDialog onConfirm={() => reload()}>
+            <button
+              type="button"
+              disabled={loading}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "5px 12px",
+                borderRadius: 4,
+                border: "1px solid #C2BFB5",
+                background: loading ? "#F5F4EF" : "#1A1917",
+                cursor: loading ? "default" : "pointer",
+                color: loading ? "#7A766F" : "#fff",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {loading ? "Loading…" : "Sync"}
+            </button>
+          </SyncConfirmationDialog>
         </div>
       </div>
 
@@ -4580,22 +4638,23 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         {!hasData && !loading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#F0EEE9", zIndex: 5 }}>
             <span style={{ fontSize: 13, color: "#7A766F" }}>Press Sync to load planning data</span>
-            <button
-              type="button"
-              onClick={() => reload()}
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                padding: "7px 20px",
-                borderRadius: 4,
-                border: "1px solid #C2BFB5",
-                background: "#1A1917",
-                cursor: "pointer",
-                color: "#fff",
-              }}
-            >
-              Sync
-            </button>
+            <SyncConfirmationDialog onConfirm={() => reload()}>
+              <button
+                type="button"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "7px 20px",
+                  borderRadius: 4,
+                  border: "1px solid #C2BFB5",
+                  background: "#1A1917",
+                  cursor: "pointer",
+                  color: "#fff",
+                }}
+              >
+                Sync
+              </button>
+            </SyncConfirmationDialog>
           </div>
         )}
         {!hasData && loading && (

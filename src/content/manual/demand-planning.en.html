@@ -24,7 +24,7 @@
     <tr><td class="label">Category / Product / Urgency</td><td>Reduce the SKU scope. When several controls are active, only rows satisfying all active criteria are shown.</td></tr>
     <tr><td class="label">Search</td><td>Enter an SKU or another supported text value. Clear the input to return to the full result.</td></tr>
     <tr><td class="label">As of</td><td>Recomputes sales and stock for the selected date, along with S.O.D., inventory life and the start of the container chain. Transit stock, remaining/mistake and the container list stay at today's values, and the per-warehouse stock columns show as &mdash; because the inventory history keeps SKU totals only. Dates the history cannot answer in full cannot be selected. Confirm the analysis date before making decisions about a historical view.</td></tr>
-    <tr><td class="label">Sync</td><td>Reloads current source data and refreshes sales, inventory, and OOS calculations.</td></tr>
+    <tr><td class="label">Sync</td><td>Reviews the work in a confirmation dialog, then starts a background sync. It normally takes 3–5 minutes; follow its status and result in <strong>Sync History</strong>. See section ⑱ below.</td></tr>
     <tr><td class="label">Export / Import</td><td>Exports the current result or imports supported transit-stock data. Review the import preview and validation errors before applying it.</td></tr>
     <tr><td class="label">Settings / SKU count</td><td>Settings is a separate button sized like the text and fill controls. The SKU count appears in its own area to the right and reflects active filters and visibility rules. Planning Settings opens at the same screen position as Column Settings.</td></tr>
   </table>
@@ -70,7 +70,7 @@
   <table class="feat-table">
     <tr><th style="width:190px">Task</th><th>How</th><th>Persistence</th></tr>
     <tr><td class="label">Rename a header</td><td><strong>Double-click</strong> a leaf header or top group/container header and type in the wide editor. Enter saves; Esc cancels. Saving a blank name restores the default.</td><td>Per user</td></tr>
-    <tr><td class="label">Reorder columns</td><td>Drag a normal leaf header individually. Drag a <strong>container group header</strong> to move Con. Qty, Rem. Qty, Open Orders, Avail Qty, Est. Sales, Back Order, Carry over, Inv. Life, EST. SOD, Plan SOD, and CBM as one block.</td><td>Per user</td></tr>
+    <tr><td class="label">Reorder columns</td><td>Drag a normal leaf header individually. Drag a <strong>container group header</strong> to move every sub-column from CBM through Plan SOD as one block. In Floor Mat, Loose Sets Ordered, 1st/2nd Usable, and Pairs After move with the same block.</td><td>Per user</td></tr>
     <tr><td class="label">Resize columns</td><td>Drag the right header boundary. Header, data cells, and summary/total areas stay aligned to the same width.</td><td>All columns, per user</td></tr>
     <tr><td class="label">Freeze columns</td><td>Choose the final pinned column under <strong>Freeze Column</strong> in <span class="btn-label">⊞ Columns ▾</span>. Everything through that column stays pinned on the left.</td><td>Per user</td></tr>
     <tr><td class="label">Reset widths</td><td>Click <span class="btn-label">Reset Widths</span> and approve the confirmation. Next ETA, EST. SOD, and Plan SOD return to their 10px default font and date-friendly default widths.</td><td>Replaced by defaults</td></tr>
@@ -143,7 +143,7 @@
   <div class="callout warn"><span class="callout-icon">🔒</span><div>Read-only users can review, sort, and filter data, but editing CBM, Note, ETA, Con. Qty, and saving may be restricted.</div></div>
 
   <h3 id="dp-containers">⑧ Container Planning and Auto Calculation</h3>
-  <p>Each container can show planning sub-columns such as Con. Qty, remaining inventory, open orders, available quantity, estimated sales, backorder, carryover, Inv. Life, EST. SOD, Plan SOD, and CBM. Some are inputs; others are chained results based on the previous container and ETA.</p>
+  <p>Each container shows <strong>CBM first</strong>, followed by Con. Qty, remaining inventory, open orders, available quantity, estimated sales, backorder, carryover, Inv. Life, EST. SOD, and Plan SOD. Floor Mat adds sub-columns that explain how many sets can be assembled. Some are inputs; others are chained results based on the previous container and ETA.</p>
   <table class="feat-table">
     <tr><th style="width:180px">Feature</th><th>Description</th></tr>
     <tr><td class="label">Fixed target 📅</td><td>Uses the target days in the header—90 by default—to calculate a Con. Qty draft for each SKU.</td></tr>
@@ -156,7 +156,7 @@
   <h3 id="dp-key-columns">⑨ Reading Key Columns</h3>
   <table class="feat-table">
     <tr><th style="width:190px">Column</th><th>Meaning</th></tr>
-    <tr><td class="label">West / East / Transit / Total</td><td>West available, East available, in-transit, and total inventory. Total is West + East + Transit.</td></tr>
+    <tr><td class="label">Warehouses / West / East / Transit / Total</td><td>West is available inventory from Fullerton + Canary + Dream Trans + Linkone. East is TTM + TTM Jeff. Total is West + East + Transit. For a finished Floor Mat set, Total also includes Loose Sets On Hand.</td></tr>
     <tr><td class="label">W/E/Total Avg</td><td>Regional or total average daily sales. Previous, Actual, and Current distinguish the prior basis, measured result, and currently applied rate.</td></tr>
     <tr><td class="label">Next ETA</td><td>The next expected arrival date. Its 10px default font and wider default width are designed to show the date without truncation.</td></tr>
     <tr><td class="label">S.O.D / EST. SOD / Plan SOD</td><td>Estimated stockout dates. General S.O.D uses current inventory; EST. SOD and Plan SOD reflect the container chain and planned quantities.</td></tr>
