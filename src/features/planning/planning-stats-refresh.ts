@@ -9,11 +9,23 @@ type RefreshPayload = {
 
 type RefreshJobStatus = "queued" | "running" | "succeeded" | "failed";
 
+/** The job's recorded result: stats counts plus `workbench` (the container push). */
+export type PlanningStatsRefreshResult = Record<string, unknown> | null;
+
 type RefreshJob = {
   jobId: string;
   status: RefreshJobStatus;
   error?: string | null;
+  result?: PlanningStatsRefreshResult;
 };
+
+/** A failed job. `result` still carries what did finish, such as the Workbench push. */
+export class PlanningStatsRefreshError extends Error {
+  constructor(message: string, readonly result: PlanningStatsRefreshResult = null) {
+    super(message);
+    this.name = "PlanningStatsRefreshError";
+  }
+}
 
 const POLL_INTERVAL_MS = 1_500;
 const MAX_WAIT_MS = 15 * 60_000;
@@ -59,8 +71,9 @@ export async function waitForPlanningStatsRefresh(
 
     const data = json.data as Partial<RefreshJob> | undefined;
     const status = data?.status;
-    if (status === "succeeded") return { jobId, status };
-    if (status === "failed") throw new Error(data?.error || "Stats refresh failed");
+    const result = data?.result ?? null;
+    if (status === "succeeded") return { jobId, status, result };
+    if (status === "failed") throw new PlanningStatsRefreshError(data?.error || "Stats refresh failed", result);
     if (Date.now() - startedAt >= MAX_WAIT_MS) {
       throw new Error("Stats refresh is still running after 15 minutes");
     }
@@ -71,11 +84,12 @@ export async function waitForPlanningStatsRefresh(
   throw new DOMException("Stats refresh polling cancelled", "AbortError");
 }
 
+/** Runs a Sync to completion and returns the job's result (null if it had none). */
 export async function runPlanningStatsRefresh(
   payload: RefreshPayload,
   options: { isCancelled?: () => boolean } = {},
-): Promise<void> {
+): Promise<PlanningStatsRefreshResult> {
   const job = await startPlanningStatsRefresh(payload);
-  if (job.status === "succeeded") return;
-  await waitForPlanningStatsRefresh(job.jobId, options);
+  if (job.status === "succeeded") return null;
+  return (await waitForPlanningStatsRefresh(job.jobId, options)).result ?? null;
 }

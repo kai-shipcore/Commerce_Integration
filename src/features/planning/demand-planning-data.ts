@@ -5,7 +5,11 @@ import type { CategoryFilter, DemandPlanningContainerDetails, DemandPlanningData
 import { apiPath } from "@/lib/api-path";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
-import { runPlanningStatsRefresh } from "@/features/planning/planning-stats-refresh";
+import {
+  PlanningStatsRefreshError,
+  runPlanningStatsRefresh,
+  type PlanningStatsRefreshResult,
+} from "@/features/planning/planning-stats-refresh";
 import { DashboardRequestLane } from "./dashboard-requests";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
@@ -14,12 +18,16 @@ const CATEGORY_CODES: CategoryFilter[] = ["sc", "cc", "fm", "ac", "swc"];
 export type VelocityMode = "link" | "custom";
 type RefreshSettings = { salesWindowWeights: SalesWindowWeights; oosLostDemandWeights: OosLostDemandWeights };
 
+/** The last finished Sync job's result; `seq` changes once per finished Sync. */
+export type SyncOutcome = { seq: number; result: PlanningStatsRefreshResult };
+
 export interface DemandPlanningDataState {
   data: DemandPlanningData;
   loading: boolean;
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;
   error: string | null;
+  syncOutcome: SyncOutcome | null;
   reload: (settings?: RefreshSettings) => void;
   loadContainerDetails: () => void;
 }
@@ -45,6 +53,7 @@ export function useDemandPlanningData(
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
   const [containerDetailsLoaded, setContainerDetailsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncOutcome, setSyncOutcome] = useState<SyncOutcome | null>(null);
   const [ready, setReady] = useState<{ scope: string } | null>(null);
   const summaryLane = useRef(new DashboardRequestLane());
   const detailLane = useRef(new DashboardRequestLane());
@@ -91,7 +100,16 @@ export function useDemandPlanningData(
         await Promise.resolve();
         if (!summaryLane.current.isCurrent(request)) return;
         if (withRefresh) {
-          await runPlanningStatsRefresh(effectiveSettings, { isCancelled: () => request.signal.aborted });
+          // The job finished on the server either way, so its outcome (the
+          // Workbench push in particular) is reported even if this view moved on.
+          const finished = (result: PlanningStatsRefreshResult) =>
+            setSyncOutcome(previous => ({ seq: (previous?.seq ?? 0) + 1, result }));
+          try {
+            finished(await runPlanningStatsRefresh(effectiveSettings, { isCancelled: () => request.signal.aborted }));
+          } catch (refreshError) {
+            if (refreshError instanceof PlanningStatsRefreshError) finished(refreshError.result);
+            throw refreshError;
+          }
         }
         if (!summaryLane.current.isCurrent(request)) return;
         const response = await fetch(apiPath("/api/planning/dashboard?" + requestScope), { signal: request.signal });
@@ -179,5 +197,5 @@ export function useDemandPlanningData(
     })();
   }, [ready, scope]);
 
-  return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, reload, loadContainerDetails };
+  return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, syncOutcome, reload, loadContainerDetails };
 }

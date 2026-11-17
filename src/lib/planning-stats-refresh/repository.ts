@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import type { WorkbenchContainerPushResult } from "@/lib/workbench-container-push/service";
 
 export type PlanningStatsRefreshStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -25,6 +26,8 @@ export type PlanningStatsRefreshResult = {
   velocityLinkUpserted?: number;
   velocityCustomUpserted?: number;
   velocitySnapshotStale?: boolean;
+  // The container push to Workbench that runs with every refresh (2026-11).
+  workbench?: WorkbenchContainerPushResult;
 };
 
 export type PlanningStatsRefreshJob = {
@@ -174,11 +177,17 @@ export const PlanningStatsRefreshRepository = {
     `, [id, JSON.stringify(result)]);
   },
 
-  async markFailed(id: string, error: string): Promise<void> {
+  /** `partialResult` keeps what did finish (the Workbench push) next to the error. */
+  async markFailed(
+    id: string,
+    error: string,
+    partialResult?: Pick<PlanningStatsRefreshResult, "workbench">,
+  ): Promise<void> {
     await getPrimaryPool().query(`
       UPDATE shipcore.fc_planning_stats_refresh_jobs
-      SET status = 'failed', error = $2, finished_at = NOW(), updated_at = NOW()
+      SET status = 'failed', error = $2, result = COALESCE($3::jsonb, result),
+          finished_at = NOW(), updated_at = NOW()
       WHERE id = $1::uuid
-    `, [id, error]);
+    `, [id, error, partialResult ? JSON.stringify(partialResult) : null]);
   },
 };

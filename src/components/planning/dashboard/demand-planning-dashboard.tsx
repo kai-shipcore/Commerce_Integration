@@ -84,6 +84,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
+import { workbenchPushNotice } from "@/features/planning/workbench-push-notice";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import { ScenarioApi } from "@/features/planning/scenarios";
 import { projectRowsForScenario } from "@/features/planning/scenario-projection";
@@ -1000,9 +1001,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     containerDetailsLoading,
     containerDetailsLoaded,
     error: loadError,
+    syncOutcome,
     reload,
     loadContainerDetails,
   } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, INCLUDE_DRAFT_CONTAINERS, categoryFilter, salesWindowWeights, oosLostDemandWeights);
+
+  // Each finished Sync reports its container push to Workbench once. The ref
+  // keeps a language switch (a new `pick`) from showing the same Sync again.
+  const shownSyncSeqRef = useRef(0);
+  useEffect(() => {
+    if (!syncOutcome || syncOutcome.seq === shownSyncSeqRef.current) return;
+    shownSyncSeqRef.current = syncOutcome.seq;
+    const notice = workbenchPushNotice(syncOutcome.result?.workbench, pick);
+    if (!notice) return;
+    toast[notice.level](notice.message, {
+      description: notice.description,
+      duration: notice.level === "success" || notice.level === "info" ? 6_000 : 12_000,
+    });
+  }, [syncOutcome, pick]);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   // Read once, before the filter states below take their initial values.

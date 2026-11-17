@@ -101,4 +101,24 @@ describe("PlanningStatsRefreshRepository job transitions", () => {
     expect(sql).toContain("status = 'succeeded'");
     expect(params).toEqual([activeJob.id, JSON.stringify(result)]);
   });
+
+  it("marks a job failed and keeps the Workbench push outcome next to the error", async () => {
+    queryMock.mockResolvedValue({ rows: [] });
+    const partial = { workbench: { status: "skipped" as const, reason: "not configured" } };
+
+    await PlanningStatsRefreshRepository.markFailed(activeJob.id, "lookup unavailable", partial);
+
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("result = COALESCE($3::jsonb, result)");
+    expect(params).toEqual([activeJob.id, "lookup unavailable", JSON.stringify(partial)]);
+  });
+
+  it("leaves the stored result alone when a failure has nothing to add", async () => {
+    queryMock.mockResolvedValue({ rows: [] });
+
+    await PlanningStatsRefreshRepository.markFailed(activeJob.id, "worker stopped");
+
+    expect(queryMock.mock.calls[0][1]).toEqual([activeJob.id, "worker stopped", null]);
+  });
 });

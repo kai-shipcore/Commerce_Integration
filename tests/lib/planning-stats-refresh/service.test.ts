@@ -19,6 +19,25 @@ vi.mock("@/lib/planning-stats-refresh/repository", () => ({
 vi.mock("@/lib/demand-planning/service", () => ({
   DemandPlanningService: { refreshStats: refreshStatsMock },
 }));
+const workbenchPushMock = vi.fn();
+vi.mock("@/lib/workbench-container-push/service", () => ({
+  WorkbenchContainerPushService: { push: workbenchPushMock },
+}));
+
+const workbenchOutcome = {
+  status: "succeeded",
+  target: "staging.cowork.coverland.com",
+  considered: 2,
+  sent: 2,
+  created: 1,
+  updated: 0,
+  unchanged: 1,
+  failed: 0,
+  skipped: 0,
+  skipReasons: {},
+  errors: [],
+  durationMs: 10,
+};
 
 const { PlanningStatsRefreshService } = await import("@/lib/planning-stats-refresh/service");
 
@@ -32,6 +51,7 @@ const requestContext = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  workbenchPushMock.mockResolvedValue(workbenchOutcome);
 });
 
 describe("PlanningStatsRefreshService.queue", () => {
@@ -55,24 +75,52 @@ describe("PlanningStatsRefreshService.queue", () => {
     expect(markRunningMock).not.toHaveBeenCalled();
   });
 
-  it("runs the refresh and records the result after returning the queued job", async () => {
+  it("runs the refresh and records the result, with the Workbench push, after returning the queued job", async () => {
     queueJobMock.mockResolvedValue({ job, created: true });
-    markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
+    markRunningMock.mockResolvedValue({
+      ...job,
+      status: "running",
+      payload: {},
+      correlation_id: requestContext.correlationId,
+    });
     const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
     refreshStatsMock.mockResolvedValue(result);
 
     await PlanningStatsRefreshService.queue({}, requestContext);
 
-    await vi.waitFor(() => expect(markSucceededMock).toHaveBeenCalledWith(job.id, result));
+    await vi.waitFor(() =>
+      expect(markSucceededMock).toHaveBeenCalledWith(job.id, { ...result, workbench: workbenchOutcome }),
+    );
+    expect(workbenchPushMock).toHaveBeenCalledWith({ requestId: requestContext.correlationId });
   });
 
-  it("marks the durable job failed when the background refresh fails", async () => {
+  it("marks the durable job failed when the background refresh fails, keeping the push outcome", async () => {
     queueJobMock.mockResolvedValue({ job, created: true });
     markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
     refreshStatsMock.mockRejectedValue(new Error("lookup unavailable"));
 
     await PlanningStatsRefreshService.queue({}, requestContext);
 
-    await vi.waitFor(() => expect(markFailedMock).toHaveBeenCalledWith(job.id, "lookup unavailable"));
+    await vi.waitFor(() =>
+      expect(markFailedMock).toHaveBeenCalledWith(job.id, "lookup unavailable", { workbench: workbenchOutcome }),
+    );
+  });
+
+  it("does not let a crashed Workbench push fail the refresh", async () => {
+    queueJobMock.mockResolvedValue({ job, created: true });
+    markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
+    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
+    refreshStatsMock.mockResolvedValue(result);
+    workbenchPushMock.mockRejectedValue(new Error("boom"));
+
+    await PlanningStatsRefreshService.queue({}, requestContext);
+
+    await vi.waitFor(() =>
+      expect(markSucceededMock).toHaveBeenCalledWith(job.id, {
+        ...result,
+        workbench: { status: "skipped", reason: "Workbench push crashed: boom" },
+      }),
+    );
+    expect(markFailedMock).not.toHaveBeenCalled();
   });
 });

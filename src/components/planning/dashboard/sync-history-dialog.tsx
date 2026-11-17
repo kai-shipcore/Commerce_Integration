@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { SyncResultDetails } from "./sync-result-details";
 
 type RefreshStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -71,7 +72,33 @@ function resultSummary(result: Record<string, unknown> | null): string {
     ["Custom", result.customSalesUpserted],
     ["SKU", result.productsBackfilled],
   ].filter((entry): entry is [string, number] => typeof entry[1] === "number");
-  return values.length ? values.map(([label, value]) => `${label} ${value.toLocaleString()}`).join(" · ") : "—";
+  const parts = values.map(([label, value]) => `${label} ${value.toLocaleString()}`);
+  const workbench = workbenchSummary(result.workbench);
+  if (workbench) parts.push(workbench);
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+/** The container push to Workbench that runs with each Sync; absent on older jobs. */
+function workbenchSummary(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const push = value as Record<string, unknown>;
+  const count = (key: string) => (typeof push[key] === "number" ? (push[key] as number) : 0);
+  // Containers DP could not send (no or unknown destination warehouse); without
+  // this, a push that sent nothing reads as "0 new, 0 updated".
+  const skipped = count("skipped") > 0 ? `, ${count("skipped")} skipped` : "";
+  const missing = count("missingSkuCount") > 0 ? ` (${count("missingSkuCount").toLocaleString()} SKUs missing)` : "";
+  switch (push.status) {
+    case "skipped":
+      return "Workbench off";
+    case "succeeded":
+      return `Workbench ${count("created")} new, ${count("updated")} updated${skipped}`;
+    case "partial":
+      return `Workbench ${count("sent")} sent, ${count("failed")} failed${skipped}${missing}`;
+    case "failed":
+      return "Workbench failed";
+    default:
+      return null;
+  }
 }
 
 export function SyncHistoryDialog() {
@@ -241,8 +268,11 @@ export function SyncHistoryDialog() {
                   </div>
                   <div><dt className="font-semibold text-muted-foreground">Job ID</dt><dd className="mt-1 break-all font-mono">{selectedJob.id}</dd></div>
                   <div><dt className="font-semibold text-muted-foreground">Correlation ID</dt><dd className="mt-1 break-all font-mono">{selectedJob.correlation_id ?? "—"}</dd></div>
-                  <div><dt className="font-semibold text-muted-foreground">Result</dt><dd className="mt-1 rounded-md border bg-white p-3 whitespace-pre-wrap break-words font-mono">{selectedJob.result ? JSON.stringify(selectedJob.result, null, 2) : "—"}</dd></div>
                   {selectedJob.error ? <div><dt className="font-semibold text-red-700">Error</dt><dd className="mt-1 rounded-md border border-red-200 bg-red-50 p-3 break-words text-red-800">{selectedJob.error}</dd></div> : null}
+                  <div>
+                    <dt className="font-semibold text-muted-foreground">Result</dt>
+                    <dd className="mt-1">{selectedJob.result ? <SyncResultDetails result={selectedJob.result} pick={pick} /> : "—"}</dd>
+                  </div>
                 </dl>
               </div>
             ) : (
