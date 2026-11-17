@@ -2,7 +2,12 @@ import { DemandPlanningService } from "@/lib/demand-planning/service";
 import {
   PlanningStatsRefreshRepository,
   type PlanningStatsRefreshPayload,
+  type PlanningStatsRefreshRequestContext,
 } from "@/lib/planning-stats-refresh/repository";
+import {
+  WorkbenchContainerPushService,
+  type WorkbenchContainerPushResult,
+} from "@/lib/workbench-container-push/service";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -14,12 +19,23 @@ async function execute(jobId: string): Promise<void> {
   const job = await PlanningStatsRefreshRepository.markRunning(jobId);
   if (!job) return;
 
+  // The container push to Workbench shares nothing with the stats refresh, so
+  // it runs alongside it, and its outcome is recorded whichever way the
+  // refresh ends. It is not allowed to fail the job. The catch is attached
+  // now, not at the await below: a rejection while the refresh is still
+  // running would otherwise be an unhandled rejection.
+  const workbenchPush = WorkbenchContainerPushService.push({ requestId: job.correlation_id })
+    .catch((error: unknown): WorkbenchContainerPushResult => ({
+      status: "skipped",
+      reason: `Workbench push crashed: ${errorMessage(error)}`,
+    }));
+
   try {
     const result = await DemandPlanningService.refreshStats(job.payload);
     if (!result) throw new Error("No database connection available");
-    await PlanningStatsRefreshRepository.markSucceeded(jobId, result);
+    await PlanningStatsRefreshRepository.markSucceeded(jobId, { ...result, workbench: await workbenchPush });
   } catch (error: unknown) {
-    await PlanningStatsRefreshRepository.markFailed(jobId, errorMessage(error));
+    await PlanningStatsRefreshRepository.markFailed(jobId, errorMessage(error), { workbench: await workbenchPush });
   }
 }
 
@@ -32,8 +48,12 @@ function schedule(jobId: string): void {
 }
 
 export const PlanningStatsRefreshService = {
-  async queue(payload: PlanningStatsRefreshPayload) {
-    const queued = await PlanningStatsRefreshRepository.queueJob(payload);
+  listJobs(options: { limit: number; offset: number; status?: "queued" | "running" | "succeeded" | "failed" }) {
+    return PlanningStatsRefreshRepository.listJobs(options);
+  },
+
+  async queue(payload: PlanningStatsRefreshPayload, context: PlanningStatsRefreshRequestContext) {
+    const queued = await PlanningStatsRefreshRepository.queueJob(payload, context);
     if (queued.job.status === "queued") schedule(queued.job.id);
     return queued;
   },

@@ -122,7 +122,7 @@
     </tr>
     <tr>
       <td class="label">Functions</td>
-      <td><code>IF</code>, <code>IFERROR</code>, <code>MIN</code>, <code>MAX</code>, <code>SUM</code>, <code>ABS</code>, <code>ROUND</code>, <code>ROUNDUP</code>, <code>ROUNDDOWN</code></td>
+      <td><code>IF</code>, <code>IFERROR</code>, <code>IFCONTAINS</code>, <code>MIN</code>, <code>MAX</code>, <code>SUM</code>, <code>ABS</code>, <code>ROUND</code>, <code>ROUNDUP</code>, <code>ROUNDDOWN</code></td>
     </tr>
     <tr>
       <td class="label">Length</td>
@@ -192,3 +192,85 @@
     <span class="callout-icon">⚠️</span>
     <div><strong>A past reference date is not a full snapshot of that time.</strong> Transit stock and the container plan are current values, so to reconstruct a past decision, check the container status from the time of the order separately.</div>
   </div>
+
+  <h3 id="dp-floor-mat-sets">⑮ Floor Mat Sets — Reading Loose Components as Finished Sets</h3>
+  <p>A finished Floor Mat set may be stored as separate 1st Row (Front), 2nd Row (Rear), and 3rd Row components. The dashboard reads the links registered in SKU Master and calculates how many finished sets can be assembled now and after each incoming container.</p>
+  <div class="callout info"><span class="callout-icon">💡</span><div><b>Start here:</b> Select <strong>Floor Mat</strong> at the top, then open <span class="btn-label">⊞ Columns ▾</span> and enable <strong>Floor Mat Sets</strong>. If every value is blank, check the Master Set's component links and Type in SKU Master.</div></div>
+
+  <h3 class="sub">Reading the current set position</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Column</th><th>Meaning</th><th>How to use it</th></tr>
+    <tr><td class="label">1~2 / 3rd Row Pre-Order</td><td>Pre-Order availability registered in SKU Master</td><td>A blank means the value has not been recorded.</td></tr>
+    <tr><td class="label">Front / Rear / 3rd Row</td><td>Component SKUs linked to the finished set and their current stock</td><td>Identify which component prevents more sets from being assembled.</td></tr>
+    <tr><td class="label">Current Pairs</td><td>Sets that current 1st and 2nd Row components can make</td><td>The smaller component quantity is the basic limit. Shared components are allocated across their linked sets.</td></tr>
+    <tr><td class="label">Loose Sets On Hand</td><td>Sets that can be assembled now from loose components</td><td>Included in the finished Master Set's Total Stock and S.O.D.</td></tr>
+    <tr><td class="label">Full Sets / Set Split</td><td>Sets available at Primary, Dream Trans, and East, plus components split across locations</td><td>A Set Split value means component movement may be required before assembly.</td></tr>
+    <tr><td class="label">Needed / Gap / Lost / Free</td><td>Components needed to pair, imbalance, unallocated units, and spare units</td><td>Use these columns to decide which Row needs an additional order.</td></tr>
+  </table>
+
+  <h3 class="sub">Reading the set effect of an incoming container</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Container sub-column</th><th>Meaning</th></tr>
+    <tr><td class="label">Loose Sets Ordered</td><td>New sets made possible by the 1st/2nd Row units in that container. On a component row, it shows the Master Sets those units pair into.</td></tr>
+    <tr><td class="label">1st / 2nd Usable</td><td>Incoming component units available for set assembly after that component's live Back Order is covered.</td></tr>
+    <tr><td class="label">Pairs After</td><td>Cumulative sets that can be assembled after this container arrives.</td></tr>
+    <tr><td class="label">Highlighted Loose Sets Ordered</td><td>The gained sets are split across warehouses and cannot be assembled at one location without movement.</td></tr>
+  </table>
+  <p><strong>FM02 1st/2nd, FM03 1st/2nd, and Pairs after FM02/FM03</strong> place the two frequently compared containers side by side on the Master row. They match the first incoming container whose name starts with FM02 or FM03 and go blank after that container leaves the incoming list.</p>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Floor Mat Back Order rule:</b> 1st and 2nd Row components show only the live unfilled Back Order at each container stage, avoiding double counting the finished-set forecast. Finished sets, 3rd Row, and other products continue to accumulate shortages through the chain.</div></div>
+
+  <h3 id="dp-auto-order-updates">⑯ Automatic Ordering — Target Groups and Capacity Fitting</h3>
+  <p>Both Fixed Target 📅 and Sales-Tier Target 📊 <strong>replace the existing quantities of candidate SKUs</strong> instead of adding to them. Quantities for non-candidate SKUs remain and consume container capacity first.</p>
+  <table class="feat-table">
+    <tr><th style="width:210px">Item</th><th>Current behavior</th></tr>
+    <tr><td class="label">Target-day groups</td><td>Configure sales tiers separately for groups such as Seat Cover Original/Custom, Car Cover fabric 03/15, and Floor Mat 1+2 Set/3rd Row.</td></tr>
+    <tr><td class="label">Eligible SKUs</td><td>Active Original/Custom SKUs are the normal candidates. For Floor Mat, only Types <strong>1+2 Set</strong> and <strong>3rd Row</strong> are automatic; 1+2+3 Set and 1st/2nd Row remain manual.</td></tr>
+    <tr><td class="label">No capacity limit</td><td>Calculates the full quantity and CBM required by the configured target days.</td></tr>
+    <tr><td class="label">Fit to container CBM</td><td>Lowers every candidate's target days by the same share instead of filling in display order. A reduced need below MOQ is skipped; remaining space is assigned by demand, highest first.</td></tr>
+    <tr><td class="label">Preview</td><td>Review replaced quantities, retained non-candidate quantities, required CBM, allocated CBM, and the achieved target percentage before applying.</td></tr>
+  </table>
+
+  <h3 class="sub">Replacing Soon badge</h3>
+  <p>A badge such as <strong>30d</strong> beside Master SKU is the fixed inventory-life target registered on the Replacing Soon page. All auto-order actions use that value instead of their normal target setting. Hover over the badge for the replacement SKU and note.</p>
+
+  <h3 id="dp-recent-column-behavior">⑰ Recent Columns and Layout Behavior</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Feature</th><th>What to know</th></tr>
+    <tr><td class="label">Dream Trans / Linkone</td><td>Both warehouses are included in West. West = Fullerton + Canary + Dream Trans + Linkone; East = TTM + TTM Jeff.</td></tr>
+    <tr><td class="label">Legacy SKU inventory rollup</td><td>Inventory from a replaced SKU can be rolled into the final SKU. Use the mark and tooltip beside Master SKU to see the source.</td></tr>
+    <tr><td class="label">Floor Mat Sets position</td><td>By default the group sits after S.O.D. and before containers, outside the default frozen block. If you move or freeze it, it behaves like any other column.</td></tr>
+    <tr><td class="label">Hiding the freeze endpoint</td><td>If you hide the current freeze endpoint, the endpoint moves to the nearest visible column on its left. Hidden and category-only columns retain their saved positions.</td></tr>
+    <tr><td class="label">IFCONTAINS</td><td>Use it in a Formula Column to branch on included text. Example: <code>=IFCONTAINS([sku],"-C-",1,0)</code></td></tr>
+  </table>
+
+  <h3 id="dp-sync-history">⑱ Sync and Sync History — Checking Progress and Results</h3>
+  <p><span class="btn-label">Sync</span> does more than reload the screen. It starts a background job that pulls current sales and inventory data and rebuilds the Demand Planning calculations. Review the work and warnings in the confirmation dialog, then select <strong>Confirm and Start Sync</strong>.</p>
+
+  <ol>
+    <li>Select <span class="btn-label">Sync</span> and review the listed work.</li>
+    <li>Select <strong>Confirm and Start Sync</strong>. A normal run takes 3–5 minutes, but data volume or another sync may make it longer.</li>
+    <li>When it finishes, the dashboard reloads the new result. Navigating away or closing the browser does not cancel the server job.</li>
+    <li>To check it later, open <span class="btn-label">Sync History</span>.</li>
+  </ol>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">What Sync refreshes</th><th>Plain-language explanation</th></tr>
+    <tr><td class="label">Sales snapshots</td><td>Pulls current Link and Custom sales, then recalculates sales windows and daily averages.</td></tr>
+    <tr><td class="label">Inventory and Transit</td><td>Refreshes warehouse inventory and fully reconciles Transit stock to repair missing or drifted values.</td></tr>
+    <tr><td class="label">OOS and lost demand</td><td>Recalculates out-of-stock episodes, OOS days in the last 90 days, and estimated demand lost while out of stock.</td></tr>
+    <tr><td class="label">Master SKU</td><td>Adds only SKUs found in sales or inventory that are missing from SKU Master. It does not change an existing SKU's active/inactive setting.</td></tr>
+    <tr><td class="label">Containers and cache</td><td>Synchronizes container information with Workbench System and clears the old dashboard cache.</td></tr>
+  </table>
+
+  <h3 class="sub">How to read Sync History</h3>
+  <p><span class="btn-label">Sync History</span> lists recent runs newest first. Filter by status, or select a row to see its Job ID, Correlation ID, start and finish times, processed counts, and full error. Times use the Los Angeles time zone.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">Status</th><th>Meaning and action</th></tr>
+    <tr><td class="label">Queued</td><td>Waiting to run. If a shared Sync is already active, the app can reuse that job instead of creating a duplicate.</td></tr>
+    <tr><td class="label">Running</td><td>The server is pulling data and calculating. It continues if you leave the page.</td></tr>
+    <tr><td class="label">Succeeded</td><td>Completed normally. Check Result for the Inventory, Link, Custom, and SKU counts.</td></tr>
+    <tr><td class="label">Failed</td><td>Did not finish. Select the row, read Error, correct the cause, and run Sync again.</td></tr>
+  </table>
+
+  <div class="callout info"><span class="callout-icon">💡</span><div><b>A different Source page is normal.</b> The Sync buttons on Demand Planning, SKU Forecasts, and OOS Impact run the same shared pipeline. Source identifies the page that started the run.</div></div>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>A failed run may have completed some steps.</b> The full Sync is not one transaction. After reviewing Error, run Sync again to rebuild everything from the current source data. If a status changed while the history dialog was open, select <strong>Refresh</strong> to load the latest state.</div></div>

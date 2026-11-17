@@ -14,10 +14,21 @@ const activeJob = {
   payload: {},
   result: null,
   error: null,
+  requested_by: "user-1",
+  requested_by_email: "planner@shipcore.com",
+  source: "/forecast/planning/dashboard-ag-grid",
+  correlation_id: "22222222-2222-4222-8222-222222222222",
   created_at: "2026-08-07T00:00:00Z",
   started_at: "2026-08-07T00:00:01Z",
   finished_at: null,
   updated_at: "2026-08-07T00:00:01Z",
+};
+
+const requestContext = {
+  requestedBy: "user-1",
+  requestedByEmail: "planner@shipcore.com",
+  source: "/forecast/planning/dashboard-ag-grid",
+  correlationId: "22222222-2222-4222-8222-222222222222",
 };
 
 beforeEach(() => {
@@ -28,7 +39,7 @@ describe("PlanningStatsRefreshRepository.queueJob", () => {
   it("reuses the active job instead of queuing duplicate work", async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [activeJob] });
 
-    const result = await PlanningStatsRefreshRepository.queueJob({});
+    const result = await PlanningStatsRefreshRepository.queueJob({}, requestContext);
 
     expect(result).toEqual({ job: activeJob, created: false });
     expect(queryMock).toHaveBeenCalledTimes(2);
@@ -42,12 +53,40 @@ describe("PlanningStatsRefreshRepository.queueJob", () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [queuedJob] });
 
-    const result = await PlanningStatsRefreshRepository.queueJob({ salesWindowWeights: { d30: 0.3 } });
+    const result = await PlanningStatsRefreshRepository.queueJob(
+      { salesWindowWeights: { d30: 0.3 } },
+      requestContext,
+    );
 
     expect(result).toEqual({ job: queuedJob, created: true });
     const [sql, params] = queryMock.mock.calls[2];
     expect(sql).toContain("INSERT INTO shipcore.fc_planning_stats_refresh_jobs");
     expect(params[1]).toContain('"d30":0.3');
+    expect(params.slice(2)).toEqual([
+      requestContext.requestedBy,
+      requestContext.requestedByEmail,
+      requestContext.source,
+      requestContext.correlationId,
+    ]);
+  });
+});
+
+describe("PlanningStatsRefreshRepository.listJobs", () => {
+  it("returns a filtered page and total count", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [activeJob] })
+      .mockResolvedValueOnce({ rows: [{ total: 21 }] });
+
+    const result = await PlanningStatsRefreshRepository.listJobs({
+      limit: 20,
+      offset: 20,
+      status: "running",
+    });
+
+    expect(result).toEqual({ jobs: [activeJob], total: 21 });
+    expect(queryMock.mock.calls[0][0]).toContain("WHERE status = $1");
+    expect(queryMock.mock.calls[0][1]).toEqual(["running", 20, 20]);
+    expect(queryMock.mock.calls[1][1]).toEqual(["running"]);
   });
 });
 
@@ -61,5 +100,25 @@ describe("PlanningStatsRefreshRepository job transitions", () => {
     const [sql, params] = queryMock.mock.calls[0];
     expect(sql).toContain("status = 'succeeded'");
     expect(params).toEqual([activeJob.id, JSON.stringify(result)]);
+  });
+
+  it("marks a job failed and keeps the Workbench push outcome next to the error", async () => {
+    queryMock.mockResolvedValue({ rows: [] });
+    const partial = { workbench: { status: "skipped" as const, reason: "not configured" } };
+
+    await PlanningStatsRefreshRepository.markFailed(activeJob.id, "lookup unavailable", partial);
+
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("result = COALESCE($3::jsonb, result)");
+    expect(params).toEqual([activeJob.id, "lookup unavailable", JSON.stringify(partial)]);
+  });
+
+  it("leaves the stored result alone when a failure has nothing to add", async () => {
+    queryMock.mockResolvedValue({ rows: [] });
+
+    await PlanningStatsRefreshRepository.markFailed(activeJob.id, "worker stopped");
+
+    expect(queryMock.mock.calls[0][1]).toEqual([activeJob.id, "worker stopped", null]);
   });
 });
