@@ -447,6 +447,7 @@ export function SkuMasterPage() {
   const [importing, setImporting] = useState(false);
   const [previewingImport, setPreviewingImport] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [pendingImportRows, setPendingImportRows] = useState<ExcelSkuImportRow[]>([]);
   const [message, setMessage] = useState("");
@@ -828,7 +829,7 @@ export function SkuMasterPage() {
           <div>
             <h1 className="text-lg font-semibold">{pick("SKU 마스터 관리", "SKU Master Management")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              {pick("CBM 및 MOQ를 관리합니다. 편집을 클릭하여 값을 수정하세요.", "Manage CBM and MOQ. Click Edit to update values inline.")}
+              {pick("CBM 및 MOQ를 관리합니다. 행을 클릭하여 값을 수정하세요.", "Manage CBM and MOQ. Click a row to edit values inline.")}
             </p>
           </div>
         </div>
@@ -991,7 +992,7 @@ export function SkuMasterPage() {
           </button>
           <button
             type="button"
-            onClick={syncFromInventory}
+            onClick={() => setSyncDialogOpen(true)}
             disabled={syncing || importing}
             className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
           >
@@ -999,6 +1000,49 @@ export function SkuMasterPage() {
           </button>
         </div>
       </header>
+
+      <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{pick("SKU Master 재고 동기화", "Sync SKU Master from Inventory")}</DialogTitle>
+            <DialogDescription>
+              {pick(
+                "외부 재고 데이터에서 Master SKU 정보를 가져와 SKU Master를 업데이트합니다.",
+                "This sync imports Master SKU information from external inventory data and updates the SKU Master."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-[#3f3d38] marker:text-[#77736b]">
+            <li>{pick("새로운 SKU를 SKU Master에 추가합니다.", "Adds new SKUs to the SKU Master.")}</li>
+            <li>{pick("기존 SKU의 제품 정보를 최신 데이터로 갱신합니다.", "Updates existing SKU product information with the latest data.")}</li>
+            <li className="font-medium text-amber-800">{pick("동기화된 기존 SKU는 Active 상태로 변경됩니다.", "Existing SKUs included in the sync will be changed to Active.")}</li>
+            <li>{pick("실제 재고 수량은 변경하지 않습니다.", "Actual inventory quantities will not be changed.")}</li>
+            <li>{pick("수동으로 설정한 Sales Status, Floor Mat Type 및 세트 연결 정보는 유지됩니다.", "Manually configured Sales Status, Floor Mat Type, and set links will be preserved.")}</li>
+          </ul>
+          <p className="text-sm font-medium text-[#1a1917]">
+            {pick("계속 진행하시겠습니까?", "Would you like to continue?")}
+          </p>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setSyncDialogOpen(false)}
+              className="h-9 rounded-md border border-[#cccac4] bg-white px-4 text-xs font-semibold hover:bg-[#f0eee9]"
+            >
+              {pick("취소", "Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSyncDialogOpen(false);
+                void syncFromInventory();
+              }}
+              className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
+            >
+              {pick("동기화 실행", "Run Sync")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[min(96vw,1400px)]">
