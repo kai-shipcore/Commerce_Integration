@@ -710,6 +710,82 @@ function ccStatsRow(sku: string, overrides: Record<string, unknown> = {}) {
 
 const rowBySku = <T extends { sku: string }>(rows: T[], sku: string): T => rows.find((r) => r.sku === sku)!;
 
+describe("DemandPlanningService.getDashboardData - Fabric 03 BK reference sales", () => {
+  const GR = "CC-TT-03-Y-GR-1TO";
+  const BK = "CC-TT-03-Y-BK-1TO";
+
+  it("gives a BK SKU with no sales 30% of the GR SKU's, rounded, and leaves GR as it is", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow(GR, { west_90d: 49, west_60d: 36, west_30d: 15, west_15d: 8, west_7d: 3 }),
+      ccStatsRow(BK),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const bk = rowBySku(data.rows, BK);
+    expect(bk).toMatchObject({ west_90d: 15, west_60d: 11, west_30d: 5, west_15d: 2, west_7d: 1 });
+    expect(bk.sales_reference_sku).toBe(GR);
+    expect(rowBySku(data.rows, GR)).toMatchObject({ west_90d: 49, west_60d: 36, west_30d: 15, west_15d: 8, west_7d: 3 });
+    expect(rowBySku(data.rows, GR).sales_reference_sku).toBeUndefined();
+  });
+
+  it("uses whichever is higher, window by window and bucket by bucket", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow(GR, { west_90d: 40, west_30d: 10, east_90d: 10, fba_90d_sales: 14, fba_60d_sales: 10 }),
+      ccStatsRow(BK, { west_90d: 20, west_30d: 1, fba_90d_sales: 2 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, BK)).toMatchObject({
+      west_90d: 20, // own 20 > 12
+      west_30d: 3, // own 1 < 3
+      east_90d: 3,
+      fba_90d_sales: 4, // own 2 < 4.2
+      fba_60d_sales: 3,
+    });
+  });
+
+  it("carries the reference into the averages", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow(GR, { west_90d: 90, west_60d: 60, west_30d: 30, west_15d: 15, west_7d: 7, avg_daily_prev: 1, fba_avg_prev: 0.5 }),
+      ccStatsRow(BK),
+    ]);
+    const { data: withGr } = await DemandPlanningService.getDashboardData(baseQuery);
+    const bk = rowBySku(withGr.rows, BK);
+
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow(BK, { west_90d: 27, west_60d: 18, west_30d: 9, west_15d: 5, west_7d: 2, avg_daily_prev: 0.3, fba_avg_prev: 0.15 }),
+    ]);
+    const { data: alone } = await DemandPlanningService.getDashboardData(baseQuery);
+    const same = rowBySku(alone.rows, BK);
+
+    // Exactly what a BK SKU with those sales of its own would show.
+    expect(bk.total_avg_prev).toBeCloseTo(same.total_avg_prev, 6);
+    expect(bk.total_avg_real).toBeCloseTo(same.total_avg_real, 6);
+    expect(bk.total_avg_curr).toBeCloseTo(same.total_avg_curr, 6);
+    expect(bk.total_avg_real).toBeGreaterThan(0.2);
+  });
+
+  it("applies to Fabric 03 one-colour BK only", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-TT-15-Y-GR-1TO", { west_90d: 50 }),
+      ccStatsRow("CC-TT-15-Y-BK-1TO"),
+      ccStatsRow("CC-TT-03-Y-GR-1TO", { west_90d: 50 }),
+      ccStatsRow("CC-TT-03-Y-BKGR-1TO"),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, "CC-TT-15-Y-BK-1TO").west_90d).toBe(0);
+    expect(rowBySku(data.rows, "CC-TT-03-Y-BKGR-1TO").west_90d).toBe(0);
+  });
+
+  it("leaves a BK SKU alone when its GR SKU is not on the grid", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([ccStatsRow(BK, { west_90d: 4 })]);
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, BK).west_90d).toBe(4);
+    expect(rowBySku(data.rows, BK).sales_reference_sku).toBeUndefined();
+  });
+});
+
 describe("DemandPlanningService.getDashboardData - final SKU sales roll-up", () => {
   it("adds the legacy SKU's sales to the final SKU's row", async () => {
     repositoryMock.getStatsRows.mockResolvedValue([

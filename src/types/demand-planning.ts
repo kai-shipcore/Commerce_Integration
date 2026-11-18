@@ -71,6 +71,8 @@ export interface DemandRow {
    * design.
    */
   rolled_up_from?: string[];
+  /** Car Cover Fabric 03 -BK: the -GR SKU whose sales (30%) this row is planned on when higher than its own. */
+  sales_reference_sku?: string;
   /** Per-warehouse figures are null on a historical (As of) view: the
    *  inventory history carries SKU totals only, so there is nothing to split
    *  them by. total_stock stays populated. */

@@ -28,6 +28,7 @@ import {
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { toFinalMasterSku } from "@/lib/planning/master-sku";
+import { fabric03ReferenceSku, withReferenceSales } from "@/lib/planning/car-cover-reference-sales";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
@@ -92,6 +93,9 @@ const SALES_WINDOW_KEYS = [
 ] as const;
 
 type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
+
+/** The stored daily averages among the keys above; the rest are unit counts. */
+const SALES_AVERAGE_KEYS: ReadonlySet<string> = new Set(["avg_daily_prev", "east_avg_prev", "fba_avg_prev"]);
 
 /** Stock quantities that roll up from a legacy SKU onto its final SKU, on top
  *  of the sales windows above. `back` is deliberately not here: back orders
@@ -425,6 +429,16 @@ export const DemandPlanningService = {
       }
     }
 
+    // A row's sales with any rolled-up legacy sales on top.
+    const rowBySku = new Map<string, Record<string, unknown>>(rowsResult.map((r) => [r.sku as string, r]));
+    const combinedSalesFor = (r: Record<string, unknown>, sku: string): SalesWindows => {
+      const own = effectiveSalesWindows(r, velEntryFor(r, sku));
+      const contributed = rollupWindows.get(sku);
+      return contributed
+        ? (Object.fromEntries(SALES_WINDOW_KEYS.map((key) => [key, own[key] + contributed[key]])) as SalesWindows)
+        : own;
+    };
+
     // S.O.D. from a stock figure, shared by the row build below and the floor
     // mat pass after it, which raises Total Stock and has to redo both.
     const asOfMs = new Date(todayStr).getTime();
@@ -472,13 +486,16 @@ export const DemandPlanningService = {
       }
 
       const vel = velEntryFor(r, masterSku);
-      const own = effectiveSalesWindows(r, vel);
       const contributed = rollupWindows.get(masterSku);
-      const sales: SalesWindows = contributed
-        ? (Object.fromEntries(
-            SALES_WINDOW_KEYS.map((key) => [key, own[key] + contributed[key]]),
-          ) as SalesWindows)
-        : own;
+      // Car Cover Fabric 03 -BK: each figure is the higher of its own and 30%
+      // of the matching -GR SKU's (see car-cover-reference-sales.ts). The GR
+      // row has to be on the grid; an inactive or filtered-out one gives nothing.
+      const referenceSku = fabric03ReferenceSku(masterSku);
+      const referenceRow = referenceSku ? rowBySku.get(referenceSku) : undefined;
+      const ownSales = combinedSalesFor(r, masterSku);
+      const sales: SalesWindows = referenceRow
+        ? withReferenceSales(ownSales, combinedSalesFor(referenceRow, referenceSku!), SALES_AVERAGE_KEYS)
+        : ownSales;
 
       const west_90d = sales.west_90d;
       const west_60d = sales.west_60d;
@@ -532,7 +549,7 @@ export const DemandPlanningService = {
       const fba_avg_curr = Math.max(0.01, currentDailyAverage(fba_avg_prev, fba_avg_real, categoryCode as "SC" | "CC" | "FM" | undefined));
       // The stored fba_30d column knows nothing about rolled-up sales, so a row
       // that received any has to re-derive it. Same formula refreshStats uses.
-      const fba_30d = vel || contributed
+      const fba_30d = vel || contributed || referenceRow
         ? fivePeriodThirtyDayAverage(fba_90d_sales, fba_60d_sales, fba_30d_sales, 0, fba_15d_sales, fba_7d_sales)
         : r.fba_30d as number;
       const oos_days_90d = (r.oos_days_90d as number | null) ?? null;
@@ -667,6 +684,7 @@ export const DemandPlanningService = {
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
+        ...(referenceRow ? { sales_reference_sku: referenceSku! } : {}),
         west_stock: warehouseStock(stock.west_stock),
         east_stock: warehouseStock(stock.east_stock),
         west_available_stock: warehouseStock(stock.west_available_stock),
