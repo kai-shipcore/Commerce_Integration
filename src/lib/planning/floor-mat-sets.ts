@@ -5,12 +5,12 @@
  * No DB or React imports, so both sides can use it.
  */
 
-/** Sales statuses that only apply to floor mat SKUs. */
-export const FLOOR_MAT_SALES_STATUSES = ["1+2 Set", "1+2+3 Set", "1st Row", "2nd Row", "3rd Row"] as const;
-export type FloorMatSalesStatus = (typeof FLOOR_MAT_SALES_STATUSES)[number];
+/** Product roles stored in fc_products.floor_mat_type for Floor Mat SKUs. */
+export const FLOOR_MAT_TYPES = ["1+2 Set", "1+2+3 Set", "1st Row", "2nd Row", "3rd Row"] as const;
+export type FloorMatType = (typeof FLOOR_MAT_TYPES)[number];
 
-/** Every value SKU Master may store in fc_products.sales_status (the Type column). */
-export const OVERRIDE_SALES_STATUSES = ["Hold", "Discontinued", "TBD", ...FLOOR_MAT_SALES_STATUSES] as const;
+/** Lifecycle overrides stored independently in fc_products.sales_status. */
+export const OVERRIDE_SALES_STATUSES = ["Hold", "Discontinued", "TBD"] as const;
 export type OverrideSalesStatus = (typeof OVERRIDE_SALES_STATUSES)[number];
 
 const statusKey = (value: string) =>
@@ -20,14 +20,20 @@ const statusKey = (value: string) =>
     .replace(/\s+/g, "");
 
 const STATUS_BY_KEY = new Map(OVERRIDE_SALES_STATUSES.map((value) => [statusKey(value), value] as const));
+const FLOOR_MAT_TYPE_BY_KEY = new Map(FLOOR_MAT_TYPES.map((value) => [statusKey(value), value] as const));
 
 /** Case- and spacing-insensitive match ("1+2set", "1+2+3 Set (-C)", "hold"). */
 export function parseOverrideSalesStatus(value: unknown): OverrideSalesStatus | undefined {
   return STATUS_BY_KEY.get(statusKey(String(value ?? "")));
 }
 
-export function isFloorMatSalesStatus(value: unknown): value is FloorMatSalesStatus {
-  return (FLOOR_MAT_SALES_STATUSES as readonly unknown[]).includes(value);
+/** Case- and spacing-insensitive match, including the sheet's "(-C)" suffix. */
+export function parseFloorMatType(value: unknown): FloorMatType | undefined {
+  return FLOOR_MAT_TYPE_BY_KEY.get(statusKey(String(value ?? "")));
+}
+
+export function isFloorMatType(value: unknown): value is FloorMatType {
+  return (FLOOR_MAT_TYPES as readonly unknown[]).includes(value);
 }
 
 /**
@@ -37,8 +43,8 @@ export function isFloorMatSalesStatus(value: unknown): value is FloorMatSalesSta
  * components are mostly consumed into sets, so a forecast shortfall on them
  * would double count the set's own; they show only their live back order.
  */
-export function accumulatesBackorder(salesStatus: string | null | undefined): boolean {
-  return salesStatus !== "1st Row" && salesStatus !== "2nd Row";
+export function accumulatesBackorder(floorMatType: string | null | undefined): boolean {
+  return floorMatType !== "1st Row" && floorMatType !== "2nd Row";
 }
 
 export function isFloorMatSku(masterSku: string): boolean {

@@ -4,8 +4,8 @@ import { accumulatesBackorder } from "@/lib/planning/floor-mat-sets";
 import { sheetContainerBackorderQty } from "@/lib/planning/forecast-calculations";
 import type { DemandRow } from "@/types/demand-planning";
 
-const row = (sku: string, category_code: DemandRow["category_code"], sales_status: DemandRow["sales_status"]) => ({
-  sku, category_code, sales_status,
+const row = (sku: string, category_code: DemandRow["category_code"], sales_status: DemandRow["sales_status"], floor_mat_type?: DemandRow["floor_mat_type"]) => ({
+  sku, category_code, sales_status, floor_mat_type,
 });
 
 describe("isAutoOrderSalesStatus", () => {
@@ -15,11 +15,11 @@ describe("isAutoOrderSalesStatus", () => {
   });
 
   it("fills only 1+2 Set and 3rd Row among the floor mat statuses", () => {
-    expect(isAutoOrderSalesStatus({ sales_status: "1+2 Set" })).toBe(true);
-    expect(isAutoOrderSalesStatus({ sales_status: "3rd Row" })).toBe(true);
-    expect(isAutoOrderSalesStatus({ sales_status: "1+2+3 Set" })).toBe(false);
-    expect(isAutoOrderSalesStatus({ sales_status: "1st Row" })).toBe(false);
-    expect(isAutoOrderSalesStatus({ sales_status: "2nd Row" })).toBe(false);
+    expect(isAutoOrderSalesStatus({ sales_status: "Original", floor_mat_type: "1+2 Set" })).toBe(true);
+    expect(isAutoOrderSalesStatus({ sales_status: "Original", floor_mat_type: "3rd Row" })).toBe(true);
+    expect(isAutoOrderSalesStatus({ sales_status: "Hold", floor_mat_type: "1+2+3 Set" })).toBe(false);
+    expect(isAutoOrderSalesStatus({ sales_status: "Hold", floor_mat_type: "1st Row" })).toBe(false);
+    expect(isAutoOrderSalesStatus({ sales_status: "Hold", floor_mat_type: "2nd Row" })).toBe(false);
   });
 
   it("leaves Part, SWC, Hold, Discontinued and TBD for manual entry", () => {
@@ -31,8 +31,8 @@ describe("isAutoOrderSalesStatus", () => {
 
 describe("targetTierGroupForRow", () => {
   it("gives 1+2 Set and 3rd Row a target-days group of their own", () => {
-    expect(targetTierGroupForRow(row("CA-FM-80-FM15116", "FM", "1+2 Set"))).toBe("fm_set");
-    expect(targetTierGroupForRow(row("CA-FM-TX-80-S3-BM-X705", "FM", "3rd Row"))).toBe("fm_third");
+    expect(targetTierGroupForRow(row("CA-FM-80-FM15116", "FM", "Original", "1+2 Set"))).toBe("fm_set");
+    expect(targetTierGroupForRow(row("CA-FM-TX-80-S3-BM-X705", "FM", "Original", "3rd Row"))).toBe("fm_third");
     expect(TARGET_TIER_GROUPS).toContain("fm_set");
     expect(TARGET_TIER_GROUPS).toContain("fm_third");
   });

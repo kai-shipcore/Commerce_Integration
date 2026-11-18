@@ -5,6 +5,7 @@ import {
   emptyFloorMatSet,
   isEmptyFloorMatSet,
   mergeFloorMatSetImport,
+  parseFloorMatType,
   parseOverrideSalesStatus,
   parsePreOrder,
   parseSkuList,
@@ -18,12 +19,20 @@ const set = (patch: Partial<FloorMatSet>): FloorMatSet => ({ ...emptyFloorMatSet
 describe("parseOverrideSalesStatus", () => {
   it("matches regardless of case and spacing", () => {
     expect(parseOverrideSalesStatus("hold")).toBe("Hold");
-    expect(parseOverrideSalesStatus("1+2set")).toBe("1+2 Set");
-    expect(parseOverrideSalesStatus(" 1ST ROW ")).toBe("1st Row");
+  });
+
+  it("does not accept floor mat types", () => {
+    expect(parseOverrideSalesStatus("1+2set")).toBeUndefined();
+    expect(parseOverrideSalesStatus(" 1ST ROW ")).toBeUndefined();
+  });
+
+  it("parses floor mat types independently", () => {
+    expect(parseFloorMatType("1+2set")).toBe("1+2 Set");
+    expect(parseFloorMatType(" 1ST ROW ")).toBe("1st Row");
   });
 
   it("reads the sheet's '1+2+3 Set (-C)' spelling", () => {
-    expect(parseOverrideSalesStatus("1+2+3 Set (-C)")).toBe("1+2+3 Set");
+    expect(parseFloorMatType("1+2+3 Set (-C)")).toBe("1+2+3 Set");
   });
 
   it("returns undefined for anything else, including derived statuses", () => {

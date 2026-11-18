@@ -540,7 +540,6 @@ export type SalesStatus = DemandRow["sales_status"];
 
 export const SALES_STATUS_VALUES: SalesStatus[] = [
   "Original", "Custom", "Part", "SWC", "Hold", "Discontinued", "TBD",
-  "1+2 Set", "1+2+3 Set", "1st Row", "2nd Row", "3rd Row",
 ];
 
 /** Where a row sits when `fc_products` has no category for it: the SKU string
