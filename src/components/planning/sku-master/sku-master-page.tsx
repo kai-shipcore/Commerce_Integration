@@ -10,10 +10,10 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
 import { SkuPriceHistoryDrawer } from "@/components/production/sku-price-history-drawer";
 import {
-  FLOOR_MAT_SALES_STATUSES,
+  FLOOR_MAT_TYPES,
   emptyFloorMatSet,
   formatPreOrder,
-  isFloorMatSalesStatus,
+  parseFloorMatType,
   parseOverrideSalesStatus,
   parsePreOrder,
   parseSkuList,
@@ -21,6 +21,7 @@ import {
   splitMultiValue,
   type FloorMatSet,
   type FloorMatSetImportFields,
+  type FloorMatType,
   type OverrideSalesStatus,
 } from "@/lib/planning/floor-mat-sets";
 import {
@@ -40,6 +41,7 @@ type SkuMasterRow = {
   categoryCode: string;
   status: SkuStatus;
   salesStatus: OverrideSalesStatus | null;
+  floorMatType: FloorMatType | null;
   originalOrCustom: OriginalOrCustom;
   moq: number;
   orderMultiple: number;
@@ -52,11 +54,11 @@ type SkuMasterRow = {
 };
 
 type SkuStatus = "active" | "inactive";
-// OverrideSalesStatus (the TYPE column) is a manual override only — Original/Custom are derived
+// Sales Status is a lifecycle override only — Original/Custom are derived
 // from actual order data (is_custom flag), never manually assignable, so they live in a separate
 // OriginalOrCustom field/column instead. SWC is an item/category designation (surfaced in the
-// category filter bar), not a lifecycle status, so it's excluded here too. The floor mat
-// statuses (1+2 Set, 1st Row, ...) share the field and are only offered on floor mat SKUs.
+// category filter bar), not a lifecycle status, so it's excluded here too. Floor Mat Type is
+// stored independently so a component can be, for example, both 1st Row and Hold.
 // Part is derived from the SKU itself (see partMasterSkuSql), not stored.
 type OriginalOrCustom = "Original" | "Custom" | "Part";
 type StatusFilter = SkuStatus | "all";
@@ -68,7 +70,8 @@ type SkuMasterCategoryFilter = SkuMasterProductKey;
 type SalesTypeFilter = "all" | "Original" | "Custom" | "Part";
 // Filters on the TYPE column (manual override) — distinct from SalesTypeFilter, which filters the
 // separate ORIGINAL/CUSTOM column.
-type TypeFilter = "all" | OverrideSalesStatus;
+type TypeFilter = "all" | "In Production" | OverrideSalesStatus;
+type FloorMatTypeFilter = "all" | FloorMatType;
 
 const productMeta: Record<
   SkuMasterProductKey,
@@ -127,22 +130,23 @@ type ExcelSkuImportRow = FloorMatSetImportFields & {
   orderMultiple?: number;
   status?: SkuStatus;
   salesStatus?: OverrideSalesStatus;
+  floorMatType?: FloorMatType;
 };
 
 const SKU_IMPORT_TEMPLATE_HEADERS = [
-  "Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type",
+  "Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Sales Status", "Floor Mat Type",
   "1st Row SKU", "2nd Row SKU", "3rd Row SKU", "1~2 Pre-Order", "3 Pre-Order", "Old Set SKU",
 ] as const;
 
 const SKU_IMPORT_TEMPLATE_ROWS: ReadonlyArray<ReadonlyArray<string | number>> = [
-  ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued", "", "", "", "", "", ""],
-  ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold", "", "", "", "", "", ""],
+  ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued", "", "", "", "", "", "", ""],
+  ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold", "", "", "", "", "", "", ""],
   [
-    "CA-FM-80-EXAMPLE", 0.0957, 5, 5, "active", "1+2 Set",
+    "CA-FM-80-EXAMPLE", 0.0957, 5, 5, "active", "", "1+2 Set",
     "CA-FM-TX-80-S1-EXAMPLE", "CA-FM-TX-80-S2-EXAMPLE",
     "CA-FM-TX-80-S3-EXAMPLE-A|CA-FM-TX-80-S3-EXAMPLE-B", "Yes", "Yes|No", "CA-FM-80-EXAMPLE-C",
   ],
-  ["CA-FM-TX-80-S3-EXAMPLE-A", "", "", "", "", "3rd Row", "", "", "", "", "Yes", ""],
+  ["CA-FM-TX-80-S3-EXAMPLE-A", "", "", "", "", "Hold", "3rd Row", "", "", "", "", "Yes", ""],
 ];
 
 type ImportPreviewValue = {
@@ -151,6 +155,7 @@ type ImportPreviewValue = {
   orderMultiple: number | null;
   status: SkuStatus;
   salesStatus: OverrideSalesStatus | null;
+  floorMatType: FloorMatType | null;
   // One-line summary of the floor mat set, built by the server.
   floorMatSet: string | null;
 };
@@ -196,10 +201,6 @@ function parseNumberCell(value: unknown): number | null {
 function parseStatusCell(value: unknown): SkuStatus | undefined {
   const normalized = String(value ?? "").trim().toLowerCase();
   return normalized === "active" || normalized === "inactive" ? normalized : undefined;
-}
-
-function parseTypeCell(value: unknown): OverrideSalesStatus | undefined {
-  return parseOverrideSalesStatus(value);
 }
 
 // Floor mat set columns. Header text is normalized to lowercase a-z0-9 first, so
@@ -308,9 +309,11 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
       const statusIndex = normalizedHeaders.findIndex(
         (header) => header === "status" || header === "productstatus"
       );
-      const typeIndex = normalizedHeaders.findIndex(
-        (header) => header === "type" || header === "salesstatus"
-      );
+      const salesStatusIndex = normalizedHeaders.findIndex((header) => header === "salesstatus");
+      const floorMatTypeIndex = normalizedHeaders.findIndex((header) => header === "floormattype");
+      // Backward compatibility for files exported before the two attributes
+      // were split: Type may contain either a lifecycle status or an FM role.
+      const legacyTypeIndex = normalizedHeaders.findIndex((header) => header === "type");
 
       const floorMatIndex = {
         frontSku: findFloorMatHeader(normalizedHeaders, FLOOR_MAT_HEADERS.frontSku),
@@ -322,7 +325,7 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
       };
       const hasFloorMatColumns = Object.values(floorMatIndex).some((index) => index >= 0);
 
-      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0 && statusIndex < 0 && typeIndex < 0 && !hasFloorMatColumns) continue;
+      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0 && statusIndex < 0 && salesStatusIndex < 0 && floorMatTypeIndex < 0 && legacyTypeIndex < 0 && !hasFloorMatColumns) continue;
 
       for (let dataRowIndex = rowIndex + 1; dataRowIndex < matrix.length; dataRowIndex += 1) {
         const dataRow = matrix[dataRowIndex];
@@ -336,15 +339,31 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
           ? parsedOrderMultiple
           : undefined;
         const status = statusIndex >= 0 ? parseStatusCell(dataRow[statusIndex]) : undefined;
-        const salesStatus = typeIndex >= 0 ? parseTypeCell(dataRow[typeIndex]) : undefined;
+        const explicitSalesStatus = salesStatusIndex >= 0 ? dataRow[salesStatusIndex] : undefined;
+        const explicitFloorMatType = floorMatTypeIndex >= 0 ? dataRow[floorMatTypeIndex] : undefined;
+        const legacyType = legacyTypeIndex >= 0 ? dataRow[legacyTypeIndex] : undefined;
+        const rawSalesStatus = String(explicitSalesStatus ?? "").trim();
+        const rawFloorMatType = String(explicitFloorMatType ?? "").trim();
+        const rawLegacyType = String(legacyType ?? "").trim();
+        const salesStatus = rawSalesStatus
+          ? parseOverrideSalesStatus(rawSalesStatus)
+          : parseOverrideSalesStatus(rawLegacyType);
+        const floorMatType = rawFloorMatType
+          ? parseFloorMatType(rawFloorMatType)
+          : parseFloorMatType(rawLegacyType);
         const rawStatus = statusIndex >= 0 ? String(dataRow[statusIndex] ?? "").trim() : "";
-        const rawType = typeIndex >= 0 ? String(dataRow[typeIndex] ?? "").trim() : "";
 
         if (rawStatus && !status) {
           throw new Error(`Invalid Status for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawStatus}`);
         }
-        if (rawType && !salesStatus) {
-          throw new Error(`Invalid Type for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawType}`);
+        if (rawSalesStatus && !salesStatus) {
+          throw new Error(`Invalid Sales Status for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawSalesStatus}`);
+        }
+        if (rawFloorMatType && !floorMatType) {
+          throw new Error(`Invalid Floor Mat Type for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawFloorMatType}`);
+        }
+        if (rawLegacyType && !salesStatus && !floorMatType) {
+          throw new Error(`Invalid legacy Type for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawLegacyType}`);
         }
 
         if (!masterSku || !masterSku.includes("-")) continue;
@@ -360,7 +379,7 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
             })
           : {};
         if (
-          cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null &&
+          cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null && floorMatType == null &&
           Object.keys(floorMatFields).length === 0
         ) continue;
 
@@ -371,7 +390,7 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
           sheetPriority < existing.sheetPriority ||
           (sheetPriority === existing.sheetPriority && precision > existing.precision)
         ) {
-          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, ...floorMatFields, precision, sheetPriority });
+          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, floorMatType, ...floorMatFields, precision, sheetPriority });
         }
       }
 
@@ -415,9 +434,11 @@ export function SkuMasterPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [salesTypeFilter, setSalesTypeFilter] = useState<SalesTypeFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [floorMatTypeFilter, setFloorMatTypeFilter] = useState<FloorMatTypeFilter>("all");
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const categoryFilterRef = useRef<HTMLDivElement>(null);
+  const editingPanelRef = useRef<HTMLDivElement>(null);
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editingSnapshot, setEditingSnapshot] = useState<SkuMasterRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -426,6 +447,7 @@ export function SkuMasterPage() {
   const [importing, setImporting] = useState(false);
   const [previewingImport, setPreviewingImport] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [pendingImportRows, setPendingImportRows] = useState<ExcelSkuImportRow[]>([]);
   const [message, setMessage] = useState("");
@@ -450,6 +472,7 @@ export function SkuMasterPage() {
       if (statusFilter !== "active") params.set("status", statusFilter);
       if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (floorMatTypeFilter !== "all") params.set("floorMatType", floorMatTypeFilter);
       params.set("page", String(page));
       params.set("limit", String(limit));
       const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
@@ -471,7 +494,7 @@ export function SkuMasterPage() {
     }, 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, product, statusFilter, salesTypeFilter, typeFilter, page, limit]);
+  }, [query, product, statusFilter, salesTypeFilter, typeFilter, floorMatTypeFilter, page, limit]);
 
   useEffect(() => {
     if (!isCategoryDropdownOpen) return;
@@ -504,17 +527,29 @@ export function SkuMasterPage() {
   }, [product, rows]);
 
   const canViewPriceHistory = ready && can("invoice-price-control", "read");
+  const canEditSkuMaster = ready && can("sku-master", "edit");
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus" | "originalOrCustom" | "floorMatSet">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus" | "floorMatType" | "originalOrCustom" | "floorMatSet">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
 
   function startEditing(row: SkuMasterRow) {
+    if (editingSku === row.masterSku) return;
+    if (editingSnapshot) {
+      setRows((current) =>
+        current.map((sku) => (sku.masterSku === editingSnapshot.masterSku ? editingSnapshot : sku))
+      );
+    }
     setEditingSku(row.masterSku);
     setEditingSnapshot({ ...row });
+    if (isFloorMatRow(row)) {
+      window.requestAnimationFrame(() => {
+        editingPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
   }
 
   function cancelEditing() {
@@ -562,6 +597,7 @@ export function SkuMasterPage() {
           weightKg: row.weightKg,
           status: row.status,
           salesStatus: row.salesStatus,
+          floorMatType: row.floorMatType,
           // "Part" is derived from the SKU code on the server, never a stored override.
           // Sending it back tripped the Original/Custom validation and blocked every
           // edit (status, CBM, MOQ, ...) on part SKUs.
@@ -703,6 +739,7 @@ export function SkuMasterPage() {
         if (statusFilter !== "active") params.set("status", statusFilter);
         if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
         if (typeFilter !== "all") params.set("type", typeFilter);
+        if (floorMatTypeFilter !== "all") params.set("floorMatType", floorMatTypeFilter);
         params.set("page", String(exportPage));
         params.set("limit", String(exportLimit));
 
@@ -719,7 +756,8 @@ export function SkuMasterPage() {
         "category",
         "category_code",
         "status",
-        "type",
+        "sales_status",
+        "floor_mat_type",
         "cbm_per_unit",
         "moq",
         "order_multiple",
@@ -744,6 +782,7 @@ export function SkuMasterPage() {
             sku.categoryCode,
             sku.status,
             sku.salesStatus ?? "",
+            sku.floorMatType ?? "",
             sku.cbmPerUnit,
             sku.moq,
             sku.orderMultiple,
@@ -790,7 +829,7 @@ export function SkuMasterPage() {
           <div>
             <h1 className="text-lg font-semibold">{pick("SKU 마스터 관리", "SKU Master Management")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              {pick("CBM 및 MOQ를 관리합니다. 편집을 클릭하여 값을 수정하세요.", "Manage CBM and MOQ. Click Edit to update values inline.")}
+              {pick("CBM 및 MOQ를 관리합니다. 행을 클릭하여 값을 수정하세요.", "Manage CBM and MOQ. Click a row to edit values inline.")}
             </p>
           </div>
         </div>
@@ -887,12 +926,23 @@ export function SkuMasterPage() {
             }}
             className="form-input h-9 w-36 bg-white text-xs"
           >
-            <option value="all">{pick("전체 유형", "All Types")}</option>
+            <option value="all">{pick("전체 판매 상태", "All Sales Statuses")}</option>
+            <option value="In Production">In Production</option>
             <option value="Hold">Hold</option>
             <option value="Discontinued">Discontinued</option>
             <option value="TBD">TBD</option>
-            {FLOOR_MAT_SALES_STATUSES.map((status) => (
-              <option key={status} value={status}>{status}</option>
+          </select>
+          <select
+            value={floorMatTypeFilter}
+            onChange={(event) => {
+              setFloorMatTypeFilter(event.target.value as FloorMatTypeFilter);
+              setPage(1);
+            }}
+            className="form-input h-9 w-40 bg-white text-xs"
+          >
+            <option value="all">{pick("전체 Floor Mat 유형", "All Floor Mat Types")}</option>
+            {FLOOR_MAT_TYPES.map((floorMatType) => (
+              <option key={floorMatType} value={floorMatType}>{floorMatType}</option>
             ))}
           </select>
           <select
@@ -943,7 +993,7 @@ export function SkuMasterPage() {
           </button>
           <button
             type="button"
-            onClick={syncFromInventory}
+            onClick={() => setSyncDialogOpen(true)}
             disabled={syncing || importing}
             className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
           >
@@ -951,6 +1001,49 @@ export function SkuMasterPage() {
           </button>
         </div>
       </header>
+
+      <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{pick("SKU Master 재고 동기화", "Sync SKU Master from Inventory")}</DialogTitle>
+            <DialogDescription>
+              {pick(
+                "외부 재고 데이터에서 Master SKU 정보를 가져와 SKU Master를 업데이트합니다.",
+                "This sync imports Master SKU information from external inventory data and updates the SKU Master."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-[#3f3d38] marker:text-[#77736b]">
+            <li>{pick("새로운 SKU를 SKU Master에 추가합니다.", "Adds new SKUs to the SKU Master.")}</li>
+            <li>{pick("기존 SKU의 제품 정보를 최신 데이터로 갱신합니다.", "Updates existing SKU product information with the latest data.")}</li>
+            <li className="font-medium text-amber-800">{pick("동기화된 기존 SKU는 Active 상태로 변경됩니다.", "Existing SKUs included in the sync will be changed to Active.")}</li>
+            <li>{pick("실제 재고 수량은 변경하지 않습니다.", "Actual inventory quantities will not be changed.")}</li>
+            <li>{pick("수동으로 설정한 Sales Status, Floor Mat Type 및 세트 연결 정보는 유지됩니다.", "Manually configured Sales Status, Floor Mat Type, and set links will be preserved.")}</li>
+          </ul>
+          <p className="text-sm font-medium text-[#1a1917]">
+            {pick("계속 진행하시겠습니까?", "Would you like to continue?")}
+          </p>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setSyncDialogOpen(false)}
+              className="h-9 rounded-md border border-[#cccac4] bg-white px-4 text-xs font-semibold hover:bg-[#f0eee9]"
+            >
+              {pick("취소", "Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSyncDialogOpen(false);
+                void syncFromInventory();
+              }}
+              className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
+            >
+              {pick("동기화 실행", "Run Sync")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[min(96vw,1400px)]">
@@ -963,8 +1056,8 @@ export function SkuMasterPage() {
                 <DialogTitle>{pick("SKU Master 엑셀 가져오기", "SKU Master Excel Import")}</DialogTitle>
                 <DialogDescription>
                   {pick(
-                    "일반 SKU 기준값과 Floor Mat Type·세트 연결 정보를 같은 템플릿에서 가져올 수 있습니다. 아래 형식과 예시를 확인해 주세요.",
-                    "Import regular SKU reference values and Floor Mat Types and set links from the same template. Review the format and examples below."
+                    "일반 SKU 기준값과 판매 상태, Floor Mat 유형·세트 연결 정보를 같은 템플릿에서 가져올 수 있습니다. 아래 형식과 예시를 확인해 주세요.",
+                    "Import regular SKU reference values, Sales Status, Floor Mat Type, and set links from the same template. Review the format and examples below."
                   )}
                 </DialogDescription>
               </div>
@@ -1026,7 +1119,7 @@ export function SkuMasterPage() {
                 <li>{pick("지원 파일: .xlsx, .xls 또는 .csv", "Supported files: .xlsx, .xls, or .csv")}</li>
                 <li>{pick("Master SKU는 필수이며, 나머지는 입력된 컬럼만 업데이트됩니다.", "Master SKU is required; only populated value columns are updated.")}</li>
                 <li>{pick("CBM은 0보다 큰 숫자, MOQ와 주문 배수는 1 이상의 정수로 입력해 주세요.", "CBM must be greater than zero; MOQ and Order Multiple must be integers of at least 1.")}</li>
-                <li>{pick("Status는 active 또는 inactive를 사용합니다. Type은 일반 상태(Hold, Discontinued, TBD) 또는 Floor Mat 유형을 입력합니다.", "Status accepts active or inactive. Type accepts a general status (Hold, Discontinued, TBD) or a Floor Mat type.")}</li>
+                <li>{pick("Status는 active 또는 inactive를 사용합니다. Sales Status는 Hold, Discontinued, TBD를 입력합니다.", "Status accepts active or inactive. Sales Status accepts Hold, Discontinued, or TBD.")}</li>
                 <li>{pick(
                   "Floor Mat Type은 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, 3rd Row입니다. 세트 SKU 행에는 오른쪽 6개 컬럼으로 부품 SKU와 Pre-Order 여부를 연결합니다.",
                   "Floor Mat types are 1+2 Set, 1+2+3 Set, 1st Row, 2nd Row, and 3rd Row. On a set SKU row, use the six columns on the right to link component SKUs and Pre-Order availability."
@@ -1140,7 +1233,8 @@ export function SkuMasterPage() {
                       <th className="px-4 py-3 font-semibold">MOQ</th>
                       <th className="px-4 py-3 font-semibold">Order Multiple</th>
                       <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Type</th>
+                      <th className="px-4 py-3 font-semibold">Sales Status</th>
+                      <th className="px-4 py-3 font-semibold">Floor Mat Type</th>
                       <th className="px-4 py-3 font-semibold">{pick("세트 연결", "Set Links")}</th>
                     </tr>
                   </thead>
@@ -1188,6 +1282,11 @@ export function SkuMasterPage() {
                           current={row.current?.salesStatus ?? null}
                           next={row.next.salesStatus}
                           changed={row.changedFields.includes("salesStatus")}
+                        />
+                        <ImportValueChange
+                          current={row.current?.floorMatType ?? null}
+                          next={row.next.floorMatType}
+                          changed={row.changedFields.includes("floorMatType")}
                         />
                         <ImportValueChange
                           current={row.current?.floorMatSet ?? null}
@@ -1327,12 +1426,13 @@ export function SkuMasterPage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[1450px] grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white">
+        <div className="grid w-full grid-cols-[minmax(0,.9fr)_minmax(0,1.8fr)_minmax(0,.75fr)_minmax(0,.9fr)_minmax(0,.9fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,.6fr)_minmax(0,.7fr)_minmax(0,.6fr)_minmax(0,1.1fr)] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground [&>*]:min-w-0 [&>*]:truncate">
           <div className="px-4 py-3">{pick("제품", "Product")}</div>
           <div className="px-4 py-3">{pick("마스터 SKU", "Master SKU")}</div>
           <div className="px-4 py-3">{pick("상태", "Status")}</div>
-          <div className="px-4 py-3">{pick("판매 유형", "Type")}</div>
+          <div className="px-4 py-3">{pick("판매 상태", "Sales Status")}</div>
+          <div className="px-4 py-3">Floor Mat Type</div>
           <div className="px-4 py-3">{pick("오리지널/커스텀", "Original/Custom")}</div>
           <div className="px-4 py-3">{pick("CBM / 단위", "CBM / Unit")}</div>
           <div className="px-4 py-3">{pick("최소 주문량", "MOQ")}</div>
@@ -1342,17 +1442,17 @@ export function SkuMasterPage() {
         </div>
 
         {visibleSkus.map((sku) => (
-          <div key={sku.masterSku} className="min-w-[1450px] border-b border-[#e2dfd8] last:border-b-0">
+          <div key={sku.masterSku} className="w-full border-b border-[#e2dfd8] last:border-b-0">
           <div
             onClick={() => {
-              if (canViewPriceHistory && editingSku !== sku.masterSku) setSelectedPriceSku(sku);
+              if (canEditSkuMaster) startEditing(sku);
             }}
-            className={`grid grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] items-center text-sm ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
+            className={`grid w-full grid-cols-[minmax(0,.9fr)_minmax(0,1.8fr)_minmax(0,.75fr)_minmax(0,.9fr)_minmax(0,.9fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,.6fr)_minmax(0,.7fr)_minmax(0,.6fr)_minmax(0,1.1fr)] items-center text-sm transition-colors [&>*]:min-w-0 ${editingSku === sku.masterSku ? "bg-[#f3f7ff] ring-1 ring-inset ring-[#1a5cdb]/25" : canEditSkuMaster ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
             </div>
-            <div className="px-4 py-3 font-mono text-xs font-semibold">{sku.masterSku}</div>
+            <div className="truncate px-4 py-3 font-mono text-xs font-semibold" title={sku.masterSku}>{sku.masterSku}</div>
             <EditableStatus
               active={editingSku === sku.masterSku}
               value={sku.status}
@@ -1361,8 +1461,13 @@ export function SkuMasterPage() {
             <EditableSalesStatus
               active={editingSku === sku.masterSku}
               value={sku.salesStatus}
-              floorMat={isFloorMatRow(sku)}
               onChange={(value) => updateRow(sku.masterSku, { salesStatus: value })}
+            />
+            <EditableFloorMatType
+              active={editingSku === sku.masterSku}
+              value={sku.floorMatType}
+              enabled={isFloorMatRow(sku)}
+              onChange={(value) => updateRow(sku.masterSku, { floorMatType: value })}
             />
             <EditableOriginalOrCustom
               active={editingSku === sku.masterSku}
@@ -1420,32 +1525,32 @@ export function SkuMasterPage() {
                   {pick("가격 이력", "Price")}
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={async (event) => {
-                  event.stopPropagation();
-                  if (editingSku === sku.masterSku) {
+              {editingSku === sku.masterSku ? (
+                <button
+                  type="button"
+                  onClick={async (event) => {
+                    event.stopPropagation();
                     const saved = await saveRow(sku);
                     if (saved) {
                       setEditingSku(null);
                       setEditingSnapshot(null);
                       setMessage(pick(`${sku.masterSku} 저장됨`, `Saved ${sku.masterSku}`));
                     }
-                  } else {
-                    startEditing(sku);
-                  }
-                }}
-                className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
-              >
-                {editingSku === sku.masterSku ? pick("완료", "Done") : pick("편집", "Edit")}
-              </button>
+                  }}
+                  className="whitespace-nowrap rounded-md bg-[#1a5cdb] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1650c4]"
+                >
+                  {pick("완료", "Done")}
+                </button>
+              ) : null}
             </div>
           </div>
           {isFloorMatRow(sku) && editingSku === sku.masterSku ? (
-            <FloorMatSetEditor
-              value={sku.floorMatSet ?? emptyFloorMatSet()}
-              onChange={(value) => updateRow(sku.masterSku, { floorMatSet: value })}
-            />
+            <div ref={editingPanelRef}>
+              <FloorMatSetEditor
+                value={sku.floorMatSet ?? emptyFloorMatSet()}
+                onChange={(value) => updateRow(sku.masterSku, { floorMatSet: value })}
+              />
+            </div>
           ) : isFloorMatRow(sku) && sku.floorMatSet ? (
             <FloorMatSetSummary value={sku.floorMatSet} />
           ) : null}
@@ -1554,22 +1659,13 @@ const SALES_STATUS_OPTIONS: OverrideSalesStatus[] = ["Hold", "Discontinued", "TB
 function EditableSalesStatus({
   active,
   value,
-  floorMat = false,
   onChange,
 }: {
   active: boolean;
   value: OverrideSalesStatus | null;
-  /** Floor mat SKUs are also offered 1+2 Set / 1+2+3 Set / 1st–3rd Row. */
-  floorMat?: boolean;
   onChange: (value: OverrideSalesStatus | null) => void;
 }) {
   if (active) {
-    // A stored value stays selectable even if it would not be offered for this
-    // SKU, so opening Edit never silently changes it.
-    const options: OverrideSalesStatus[] = [
-      ...SALES_STATUS_OPTIONS,
-      ...(floorMat ? FLOOR_MAT_SALES_STATUSES : isFloorMatSalesStatus(value) ? [value] : []),
-    ];
     return (
       <div className="px-4 py-3">
         <select
@@ -1577,8 +1673,8 @@ function EditableSalesStatus({
           onChange={(e) => onChange(e.target.value === "" ? null : e.target.value as OverrideSalesStatus)}
           className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
         >
-          <option value="">—</option>
-          {options.map((s) => (
+          <option value="">In Production</option>
+          {SALES_STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
@@ -1590,11 +1686,6 @@ function EditableSalesStatus({
     Hold:         "bg-amber-100 text-amber-700",
     Discontinued: "bg-red-100 text-red-600",
     TBD:          "bg-slate-100 text-slate-500",
-    "1+2 Set":    "bg-emerald-100 text-emerald-700",
-    "1+2+3 Set":  "bg-teal-100 text-teal-700",
-    "1st Row":    "bg-sky-100 text-sky-700",
-    "2nd Row":    "bg-indigo-100 text-indigo-700",
-    "3rd Row":    "bg-violet-100 text-violet-700",
   };
 
   return (
@@ -1604,10 +1695,31 @@ function EditableSalesStatus({
           {value}
         </span>
       ) : (
-        <span className="text-xs text-muted-foreground">—</span>
+        <span className="inline-flex items-center whitespace-nowrap rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+          In Production
+        </span>
       )}
     </div>
   );
+}
+
+function EditableFloorMatType({ active, value, enabled, onChange }: {
+  active: boolean;
+  value: FloorMatType | null;
+  enabled: boolean;
+  onChange: (value: FloorMatType | null) => void;
+}) {
+  if (active && enabled) {
+    return (
+      <div className="px-4 py-3">
+        <select value={value ?? ""} onChange={(event) => onChange(event.target.value === "" ? null : event.target.value as FloorMatType)} className="h-8 w-28 max-w-full rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]">
+          <option value="">—</option>
+          {FLOOR_MAT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+        </select>
+      </div>
+    );
+  }
+  return <div className="px-4 py-3 text-xs text-muted-foreground">{value ?? "—"}</div>;
 }
 
 function PreOrderBadge({ value }: { value: boolean | null }) {
@@ -1919,7 +2031,7 @@ function EditableNumber({
           step={decimals === 0 ? 1 : 10 ** -decimals}
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
-          className={`h-8 ${inputClassName} shrink-0 rounded-md border border-[#cccac4] bg-white px-2 text-sm outline-none focus:border-[#1a5cdb]`}
+          className={`h-8 ${inputClassName} min-w-0 max-w-full rounded-md border border-[#cccac4] bg-white px-2 text-sm outline-none focus:border-[#1a5cdb]`}
         />
         {suffix ? <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">{suffix}</span> : null}
       </div>

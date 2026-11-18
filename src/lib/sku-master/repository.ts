@@ -2,7 +2,9 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { normalizeMasterSku, partMasterSkuSql } from "@/lib/planning/master-sku";
 import {
+  FLOOR_MAT_TYPES,
   OVERRIDE_SALES_STATUSES,
+  type FloorMatType,
   type FloorMatSet,
   type FloorMatSetImportFields,
   type OverrideSalesStatus,
@@ -18,6 +20,7 @@ export interface ProductRow {
   category_code: string | null;
   status: string;
   sales_status: string | null;
+  floor_mat_type: FloorMatType | null;
   original_or_custom: string;
   moq: number | null;
   order_multiple: number | null;
@@ -34,7 +37,8 @@ export interface ResolvedSkuMasterListQuery {
   productValues: string[];
   status: "all" | "active" | "inactive";
   salesType: "all" | "Original" | "Custom" | "Part";
-  typeFilter: "all" | OverrideSalesStatus;
+  typeFilter: "all" | "In Production" | OverrideSalesStatus;
+  floorMatTypeFilter: "all" | FloorMatType;
 }
 
 export interface ExcelSkuRow extends FloorMatSetImportFields {
@@ -44,6 +48,7 @@ export interface ExcelSkuRow extends FloorMatSetImportFields {
   orderMultiple?: number;
   status?: "active" | "inactive";
   salesStatus?: OverrideSalesStatus;
+  floorMatType?: FloorMatType;
 }
 
 /** A floor mat set the Excel import resolved to its full next state. */
@@ -58,6 +63,7 @@ export interface ExistingProductValues {
   orderMultiple: number | null;
   status: "active" | "inactive";
   salesStatus: OverrideSalesStatus | null;
+  floorMatType: FloorMatType | null;
 }
 
 export interface UpdateProductFields {
@@ -68,6 +74,8 @@ export interface UpdateProductFields {
   weightKg: number | null;
   status: "active" | "inactive" | null;
   salesStatus: string | null | undefined;
+  floorMatType: FloorMatType | null | undefined;
+  floorMatTypeSpecified: boolean;
   salesTypeOverride: "Original" | "Custom" | null | undefined;
 }
 
@@ -111,14 +119,14 @@ const forecastDashboardViewSql = `
     WHERE p.status = 'active'::shipcore.fc_product_status
 `;
 
-// Manual override only (Hold/Discontinued/TBD, plus the floor mat statuses
-// 1+2 Set / 1+2+3 Set / 1st Row / 2nd Row / 3rd Row). SWC is an item/category designation (it lives in
+// Manual lifecycle override only (Hold/Discontinued/TBD). SWC is an item/category designation (it lives in
 // the category filter bar instead, matched directly against the raw column below) rather than a
 // lifecycle status, so it's excluded here. Legacy rows where p.sales_status was mistakenly
 // written as 'Original'/'Custom' (a footgun in the old single-dropdown UI) are also treated as having
 // no override, same as NULL — Original/Custom live in originalOrCustomSql.
 // The list is a compile-time constant, never user input, so inlining it is safe.
 const OVERRIDE_STATUS_SQL_LIST = OVERRIDE_SALES_STATUSES.map((value) => `'${value}'`).join(", ");
+const FLOOR_MAT_TYPE_SQL_LIST = FLOOR_MAT_TYPES.map((value) => `'${value}'`).join(", ");
 const overrideStatusSql = `(CASE WHEN p.sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN p.sales_status ELSE NULL END)`;
 // Original vs Custom is derived purely from actual order/velocity data (the is_custom flag baked
 // into fc_stats/fc_stats_custom), independent of any manual override on fc_products.
@@ -138,6 +146,7 @@ const PRODUCT_ROW_SELECT_SQL = `
   p.category_code,
   p.status::text AS status,
   ${overrideStatusSql} AS sales_status,
+  CASE WHEN p.floor_mat_type IN (${FLOOR_MAT_TYPE_SQL_LIST}) THEN p.floor_mat_type ELSE NULL END AS floor_mat_type,
   ${originalOrCustomSql} AS original_or_custom,
   p.moq,
   p.order_multiple,
@@ -263,8 +272,17 @@ export const SkuMasterRepository = {
     }
 
     if (resolved.typeFilter !== "all") {
-      params.push(resolved.typeFilter);
-      filters.push(`${overrideStatusSql} = $${params.length}`);
+      if (resolved.typeFilter === "In Production") {
+        filters.push(`${overrideStatusSql} IS NULL`);
+      } else {
+        params.push(resolved.typeFilter);
+        filters.push(`${overrideStatusSql} = $${params.length}`);
+      }
+    }
+
+    if (resolved.floorMatTypeFilter !== "all") {
+      params.push(resolved.floorMatTypeFilter);
+      filters.push(`p.floor_mat_type = $${params.length}`);
     }
 
     return { whereClause: filters.length > 0 ? filters.join(" AND ") : "TRUE", params };
@@ -503,7 +521,8 @@ export const SkuMasterRepository = {
            weight_kg = COALESCE($6, weight_kg),
            status = COALESCE($7::shipcore.fc_product_status, status),
            sales_status = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE sales_status END,
-           sales_type_override = CASE WHEN $9::text IS NOT NULL THEN $9::text ELSE sales_type_override END,
+           floor_mat_type = CASE WHEN $10::boolean THEN $9::text ELSE floor_mat_type END,
+           sales_type_override = CASE WHEN $11::text IS NOT NULL THEN $11::text ELSE sales_type_override END,
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
@@ -516,6 +535,8 @@ export const SkuMasterRepository = {
         fields.weightKg,
         fields.status,
         fields.salesStatus ?? null,
+        fields.floorMatType ?? null,
+        fields.floorMatTypeSpecified,
         fields.salesTypeOverride ?? null,
       ]
     );
@@ -531,10 +552,12 @@ export const SkuMasterRepository = {
       order_multiple: number | null;
       status: "active" | "inactive";
       sales_status: OverrideSalesStatus | null;
+      floor_mat_type: FloorMatType | null;
     }>(
       `SELECT master_sku, cbm_per_unit::text, moq, order_multiple,
               status::text AS status,
-              CASE WHEN sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN sales_status ELSE NULL END AS sales_status
+              CASE WHEN sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN sales_status ELSE NULL END AS sales_status,
+              CASE WHEN floor_mat_type IN (${FLOOR_MAT_TYPE_SQL_LIST}) THEN floor_mat_type ELSE NULL END AS floor_mat_type
        FROM shipcore.fc_products
        WHERE master_sku = ANY($1::text[])`,
       [masterSkus]
@@ -548,6 +571,7 @@ export const SkuMasterRepository = {
           orderMultiple: row.order_multiple,
           status: row.status,
           salesStatus: row.sales_status,
+          floorMatType: row.floor_mat_type,
         },
       ])
     );
@@ -578,6 +602,7 @@ export const SkuMasterRepository = {
           imported_cbm_per_unit NUMERIC,
           imported_status shipcore.fc_product_status,
           imported_sales_status TEXT,
+          imported_floor_mat_type TEXT,
           default_moq INT,
           default_order_multiple INT,
           default_cbm_per_unit NUMERIC,
@@ -598,13 +623,14 @@ export const SkuMasterRepository = {
           importedOrderMultiple: row.orderMultiple ?? null,
           importedStatus: row.status ?? null,
           importedSalesStatus: row.salesStatus ?? null,
+          importedFloorMatType: row.floorMatType ?? null,
         };
       });
 
       await client.query(
         `INSERT INTO stg_excel_sku
            (master_sku, product_name, category, category_code,
-            imported_moq, imported_order_multiple, imported_cbm_per_unit, imported_status, imported_sales_status,
+            imported_moq, imported_order_multiple, imported_cbm_per_unit, imported_status, imported_sales_status, imported_floor_mat_type,
             default_moq, default_order_multiple, default_cbm_per_unit,
             case_qty, weight_kg)
          SELECT
@@ -617,11 +643,12 @@ export const SkuMasterRepository = {
            unnest($7::numeric[]),
            unnest($8::shipcore.fc_product_status[]),
            unnest($9::text[]),
-           unnest($10::int[]),
+           unnest($10::text[]),
            unnest($11::int[]),
-           unnest($12::numeric[]),
-           unnest($13::int[]),
-           unnest($14::numeric[])`,
+           unnest($12::int[]),
+           unnest($13::numeric[]),
+           unnest($14::int[]),
+           unnest($15::numeric[])`,
         [
           inferredRows.map((row) => row.masterSku),
           inferredRows.map((row) => row.masterSku),
@@ -632,6 +659,7 @@ export const SkuMasterRepository = {
           inferredRows.map((row) => row.importedCbmPerUnit),
           inferredRows.map((row) => row.importedStatus),
           inferredRows.map((row) => row.importedSalesStatus),
+          inferredRows.map((row) => row.importedFloorMatType),
           inferredRows.map((row) => row.moq),
           inferredRows.map((row) => row.moq),
           inferredRows.map((row) => row.cbmPerUnit),
@@ -648,6 +676,7 @@ export const SkuMasterRepository = {
           order_multiple = COALESCE(stg.imported_order_multiple, product.order_multiple),
           status = COALESCE(stg.imported_status, product.status),
           sales_status = COALESCE(stg.imported_sales_status, product.sales_status),
+          floor_mat_type = COALESCE(stg.imported_floor_mat_type, product.floor_mat_type),
           product_name = COALESCE(NULLIF(product.product_name, ''), stg.product_name),
           category = COALESCE(product.category, stg.category),
           category_code = COALESCE(product.category_code, stg.category_code),
@@ -659,7 +688,7 @@ export const SkuMasterRepository = {
       const insertedResult = await client.query(`
         INSERT INTO shipcore.fc_products (
           master_sku, product_name, category, category_code, status,
-          moq, order_multiple, cbm_per_unit, case_qty, weight_kg, sales_status,
+          moq, order_multiple, cbm_per_unit, case_qty, weight_kg, sales_status, floor_mat_type,
           created_at, updated_at
         )
         SELECT
@@ -667,7 +696,7 @@ export const SkuMasterRepository = {
           COALESCE(imported_moq, default_moq),
           COALESCE(imported_order_multiple, default_order_multiple),
           COALESCE(imported_cbm_per_unit, default_cbm_per_unit),
-          case_qty, weight_kg, imported_sales_status,
+          case_qty, weight_kg, imported_sales_status, imported_floor_mat_type,
           NOW(), NOW()
         FROM stg_excel_sku stg
         WHERE NOT EXISTS (

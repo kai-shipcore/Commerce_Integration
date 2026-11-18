@@ -57,9 +57,9 @@ export interface DemandRow {
   tone: string;
   back: number;
   sales_status:
-    | "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC"
-    // Floor mat statuses set on the SKU Master page (see src/lib/planning/floor-mat-sets.ts).
-    | "1+2 Set" | "1+2+3 Set" | "1st Row" | "2nd Row" | "3rd Row";
+    | "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
+  /** Independent Floor Mat product role set on SKU Master. */
+  floor_mat_type?: "1+2 Set" | "1+2+3 Set" | "1st Row" | "2nd Row" | "3rd Row" | null;
   category_code?: "SC" | "CC" | "FM" | "AC" | "SWC";
   sku: string;
   /**

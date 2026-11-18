@@ -622,7 +622,7 @@ export const DemandPlanningService = {
           masterSku, daysBetween, dailyRate, seasonalFactor, availQtyC, qty,
         );
         const backorderC = sheetContainerBackorderQty(
-          masterSku, total_30d, estSales, availQtyC, accumulatesBackorder(r.sales_status as string | null),
+          masterSku, total_30d, estSales, availQtyC, accumulatesBackorder(r.floor_mat_type as string | null),
         );
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
@@ -663,6 +663,7 @@ export const DemandPlanningService = {
         seat, no, color, tone,
         back,
         sales_status: (r.sales_status as DemandRow["sales_status"]),
+        floor_mat_type: (r.floor_mat_type as DemandRow["floor_mat_type"]) ?? null,
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),

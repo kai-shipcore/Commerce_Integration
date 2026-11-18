@@ -74,7 +74,7 @@ describe("SkuMasterService.getProduct", () => {
 });
 
 describe("SkuMasterService.listProducts", () => {
-  const baseQuery = { search: "", product: "", status: "active", masterSku: "", page: 1, limit: 50, salesType: "all", type: "all" };
+  const baseQuery = { search: "", product: "", status: "active", masterSku: "", page: 1, limit: 50, salesType: "all", type: "all", floorMatType: "all" };
 
   it("rejects an invalid status filter", async () => {
     await expect(SkuMasterService.listProducts({ ...baseQuery, status: "bogus" })).rejects.toThrow(ValidationError);
@@ -250,13 +250,13 @@ describe("SkuMasterService excel import", () => {
     });
   });
 
-  it("rejects invalid imported Status and Type values", async () => {
+  it("rejects invalid imported Status and Sales Status values", async () => {
     await expect(
       SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-99", status: "archived" }])
     ).rejects.toThrow("Invalid Status");
     await expect(
       SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-99", salesStatus: "Original" }])
-    ).rejects.toThrow("Invalid Type");
+    ).rejects.toThrow("Invalid Sales Status");
   });
 
   it("previews unchanged when imported values match the existing row", async () => {
@@ -300,30 +300,30 @@ describe("SkuMasterService floor mat sets", () => {
   it("attaches the stored set to floor mat rows in the list", async () => {
     repositoryMock.countProducts.mockResolvedValue(2);
     repositoryMock.listProducts.mockResolvedValue([
-      { master_sku: "CA-FM-80-FM1", product_name: "", category: null, category_code: "FM", status: "active", sales_status: "1+2 Set", original_or_custom: "Original", moq: 5, order_multiple: 5, cbm_per_unit: "0.1", case_qty: 1, weight_kg: "1" },
+      { master_sku: "CA-FM-80-FM1", product_name: "", category: null, category_code: "FM", status: "active", sales_status: null, floor_mat_type: "1+2 Set", original_or_custom: "Original", moq: 5, order_multiple: 5, cbm_per_unit: "0.1", case_qty: 1, weight_kg: "1" },
       { master_sku: "CA-SC-1", product_name: "", category: null, category_code: "SC", status: "active", sales_status: null, original_or_custom: "Original", moq: 5, order_multiple: 5, cbm_per_unit: "0.1", case_qty: 1, weight_kg: "1" },
     ]);
     floorMatSetRepositoryMock.findBySkus.mockResolvedValue(new Map([["CA-FM-80-FM1", SET]]));
 
     const result = await SkuMasterService.listProducts({
-      search: "", product: "", status: "active", masterSku: "", page: 1, limit: 50, salesType: "all", type: "1+2 Set",
+      search: "", product: "", status: "active", masterSku: "", page: 1, limit: 50, salesType: "all", type: "all", floorMatType: "1+2 Set",
     });
 
     // Only floor mat SKUs are looked up.
     expect(floorMatSetRepositoryMock.findBySkus).toHaveBeenCalledWith(["CA-FM-80-FM1"]);
-    expect(result.data[0]).toMatchObject({ salesStatus: "1+2 Set", floorMatSet: SET });
+    expect(result.data[0]).toMatchObject({ floorMatType: "1+2 Set", floorMatSet: SET });
     expect(result.data[1].floorMatSet).toBeNull();
   });
 
-  it("accepts a floor mat status on a floor mat SKU and rejects it elsewhere", async () => {
+  it("accepts a floor mat type on a floor mat SKU and rejects it elsewhere", async () => {
     repositoryMock.updateProduct.mockResolvedValue(true);
 
-    await SkuMasterService.updateProduct({ masterSku: "CA-FM-80-FM1", salesStatus: "1st Row" } as never, null);
-    expect(repositoryMock.updateProduct).toHaveBeenCalledWith("CA-FM-80-FM1", expect.objectContaining({ salesStatus: "1st Row" }));
+    await SkuMasterService.updateProduct({ masterSku: "CA-FM-80-FM1", floorMatType: "1st Row" } as never, null);
+    expect(repositoryMock.updateProduct).toHaveBeenCalledWith("CA-FM-80-FM1", expect.objectContaining({ floorMatType: "1st Row" }));
 
     await expect(
-      SkuMasterService.updateProduct({ masterSku: "CA-SC-1", salesStatus: "1st Row" } as never, null)
-    ).rejects.toThrow("floor mat status");
+      SkuMasterService.updateProduct({ masterSku: "CA-SC-1", floorMatType: "1st Row" } as never, null)
+    ).rejects.toThrow("floor mat type");
   });
 
   it("saves the set, invalidates the dashboard cache, and audits it", async () => {
@@ -380,7 +380,7 @@ describe("SkuMasterService floor mat sets", () => {
     const result = await SkuMasterService.previewExcelImport([
       {
         masterSku: "ca-fm-80-fm1",
-        salesStatus: "1+2 set",
+        floorMatType: "1+2 set",
         frontSku: "ca-fm-tx-80-s1-a",
         rearSku: "CA-FM-TX-80-S2-A",
         thirdRowSkus: "CA-FM-TX-80-S3-A|CA-FM-TX-80-S3-B",
@@ -392,8 +392,8 @@ describe("SkuMasterService floor mat sets", () => {
 
     expect(result.rows[0]).toMatchObject({
       action: "update",
-      next: { salesStatus: "1+2 Set", floorMatSet: expect.stringContaining("3rd: CA-FM-TX-80-S3-A (Yes), CA-FM-TX-80-S3-B (No)") },
-      changedFields: ["salesStatus", "floorMatSet"],
+      next: { floorMatType: "1+2 Set", floorMatSet: expect.stringContaining("3rd: CA-FM-TX-80-S3-A (Yes), CA-FM-TX-80-S3-B (No)") },
+      changedFields: ["floorMatType", "floorMatSet"],
     });
     expect(result.unknownComponentSkus).toEqual(["CA-FM-TX-80-S2-A"]);
   });

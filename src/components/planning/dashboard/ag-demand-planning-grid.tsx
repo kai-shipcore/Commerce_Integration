@@ -39,6 +39,7 @@ import {
   conSubColumnAppliesToCategories,
   matchesAnyLogicalColumnId,
   matchesSalesStatusSelection,
+  matchesFloorMatTypeSelection,
   matchesUrgencySelection,
   normalizeColumnFilterMenuSize,
   normalizeHeaderHeight,
@@ -113,6 +114,7 @@ import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-form
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
 import { keepContainerColumnsTogether } from "@/lib/planning/container-column-order";
+import { CHANGED_ADS_FILL, changedAdsFill } from "@/lib/planning/display-colors";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -618,6 +620,7 @@ const GOOGLE_PALETTE_COLOR_NAMES = (() => {
 
 function colorDisplayName(color: string, pick: (ko: string, en: string) => string) {
   const normalized = color.trim().toUpperCase();
+  if (normalized === CHANGED_ADS_FILL) return pick("변경된 ADS", "Changed ADS");
   const paletteName = GOOGLE_PALETTE_COLOR_NAMES.get(normalized);
   if (paletteName) return pick(...paletteName);
 
@@ -1385,7 +1388,7 @@ function computeContainerChain(
       row.sku, days, dailyRate, seasonalFactor, available, qty,
     );
     const backorder = sheetContainerBackorderQty(
-      row.sku, row.total_30d ?? 0, estimatedSales, available, accumulatesBackorder(row.sales_status),
+      row.sku, row.total_30d ?? 0, estimatedSales, available, accumulatesBackorder(row.floor_mat_type),
     );
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
@@ -2898,7 +2901,11 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
         {params.displayName}
       </span>
       {orderedTotalColumns.length ? (
-        <div className="relative top-[8px] flex w-full flex-none text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
+        // No vertical offset here: the header clips its overflow, so pushing
+        // this row down cut off the bottom of the totals, commas included
+        // ("6,392" read as "6 392"). The container headers' totals sit flush
+        // the same way.
+        <div className="flex w-full flex-none text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
           {orderedTotalColumns.map((column) => {
             const totalLabel = column.total === undefined ? "" : Math.round(column.total).toLocaleString();
             return (
@@ -4183,6 +4190,7 @@ export function AgDemandPlanningGrid({
   loading,
   categoryFilter,
   salesStatusFilter,
+  floorMatTypeFilter,
   urgencyFilter,
   search,
   skuPartFilters,
@@ -4702,11 +4710,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return value === null || value === undefined ? "" : String(value);
   }, [columnMenuValue]);
 
-  // Only user-assigned colors belong in the Sheets-style color menu. Default
-  // white/tint backgrounds and inherited black text must not enable a color
-  // type that the user never configured.
+  // Default white/tint backgrounds stay out of the Sheets-style menu. Edited
+  // ADS is the exception: its automatic red is meaningful user state and must
+  // be filterable just like an explicitly assigned fill.
   const columnMenuFillColor = useCallback((key: string, row: DemandRow): string => {
     const parsed = parseColumnMenuKey(key);
+    if (parsed.kind === "base") {
+      const automatic = changedAdsFill(parsed.id, row as unknown as Record<string, unknown>);
+      if (automatic) return automatic;
+    }
     const cellKey = cellColorKey(row.sku, key);
     const explicit = cellColors[cellKey];
     if (explicit) return explicit;
@@ -4757,6 +4769,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (!matchesSalesStatusSelection(row, salesStatusFilter)) return false;
+      if (!matchesFloorMatTypeSelection(row, floorMatTypeFilter)) return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       return matchesUrgencySelection(row, urgencyFilter);
@@ -4773,7 +4786,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, data.rows, salesStatusFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, floorMatTypeFilter, salesStatusFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
 
   const visibleRows = useMemo(
     () => applyColumnFilters(
@@ -7861,8 +7874,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ? SELECTED_CELL_FILL
               : conditionalFormat?.fillColor
                 ? conditionalFormat.fillColor
-              : isTotalAvgColumn(column.id) && params.data?.[`${totalAvgField(column.id)}_override`] != null
-                ? "#fecaca"
+              : changedAdsFill(column.id, params.data as unknown as Record<string, unknown>)
+                ? CHANGED_ADS_FILL
               : column.id === "tavg_c" && params.data?.total_avg_curr_min_applied
                 ? MIN_SALES_APPLIED_FILL
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",

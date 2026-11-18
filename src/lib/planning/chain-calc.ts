@@ -82,7 +82,7 @@ export function computeContainerChain(
       row.sku, daysBetween, dailyRate, seasonalFactor, availQtyC, qty,
     );
     const backorderC = sheetContainerBackorderQty(
-      row.sku, row.total_30d ?? 0, estSales, availQtyC, accumulatesBackorder(row.sales_status),
+      row.sku, row.total_30d ?? 0, estSales, availQtyC, accumulatesBackorder(row.floor_mat_type),
     );
     const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
     const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);

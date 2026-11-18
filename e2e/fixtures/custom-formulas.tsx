@@ -69,7 +69,7 @@ function Fixture() {
           return next;
         })}
         onColumnDisplayOrderChange={(order) => setDisplayedOrder((current) => sameColumnOrder(current, order) ? current : order)}
-        categoryFilter={["sc"]} salesStatusFilter={[]} urgencyFilter={[]} search="" skuPartFilters={{}}
+        categoryFilter={["sc"]} salesStatusFilter={[]} floorMatTypeFilter={[]} urgencyFilter={[]} search="" skuPartFilters={{}}
         onFilteredRowsChange={noop} onLoadContainerDetails={noop} containerDetailsLoaded containerDetailsLoading={false}
         groupVis={groupVis} columnVis={visibility} compactMode={false} showMistake showZeroSales freezeUntil="sku"
         columnWidths={widths} columnWidthsRef={widthsRef} onColumnWidthsChange={setWidths} seasonalFactors={DEFAULT_SEASONAL_FACTORS}

@@ -68,6 +68,7 @@ describe("SkuMasterRepository.buildListFilters", () => {
     status: "active" as const,
     salesType: "all" as const,
     typeFilter: "all" as const,
+    floorMatTypeFilter: "all" as const,
   };
 
   it("defaults to TRUE with no filters", () => {
@@ -102,6 +103,16 @@ describe("SkuMasterRepository.buildListFilters", () => {
     expect(whereClause).toContain("$2");
     expect(params).toEqual(["active", "Part"]);
   });
+
+  it("treats In Production as the absence of a lifecycle override", () => {
+    const { whereClause, params } = SkuMasterRepository.buildListFilters({
+      ...base,
+      typeFilter: "In Production",
+    });
+
+    expect(whereClause).toContain("IS NULL");
+    expect(params).not.toContain("In Production");
+  });
 });
 
 describe("SkuMasterRepository.findBySku", () => {
@@ -121,7 +132,7 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns false when no row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 0 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesTypeOverride: undefined,
+      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: undefined,
     });
     expect(found).toBe(false);
   });
@@ -129,11 +140,11 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns true when a row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 1 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesTypeOverride: "Custom",
+      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: "Custom",
     });
     expect(found).toBe(true);
     expect(poolQueryMock.mock.calls[0][0]).toContain("sales_type_override");
-    expect(poolQueryMock.mock.calls[0][1][8]).toBe("Custom");
+    expect(poolQueryMock.mock.calls[0][1][10]).toBe("Custom");
   });
 });
 

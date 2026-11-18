@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       limit: Number(searchParams.get("limit") ?? 50),
       salesType: searchParams.get("salesType")?.trim() ?? "all",
       type: searchParams.get("type")?.trim() ?? "all",
+      floorMatType: searchParams.get("floorMatType")?.trim() ?? "all",
     });
 
     return apiSuccess(result);

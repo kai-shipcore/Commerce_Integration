@@ -9,15 +9,17 @@ import {
 import { FloorMatSetRepository } from "@/lib/sku-master/floor-mat-set-repository";
 import { normalizeMasterSku } from "@/lib/planning/master-sku";
 import {
+  FLOOR_MAT_TYPES,
   OVERRIDE_SALES_STATUSES,
   coerceFloorMatSet,
   describeFloorMatSet,
   floorMatSetComponentSkus,
   hasFloorMatSetImportFields,
-  isFloorMatSalesStatus,
+  isFloorMatType,
   isFloorMatSku,
   mergeFloorMatSetImport,
   parseOverrideSalesStatus,
+  parseFloorMatType,
   parsePreOrder,
   parseSkuList,
   sameFloorMatSet,
@@ -25,6 +27,7 @@ import {
   validateFloorMatSet,
   type FloorMatSet,
   type FloorMatSetImportFields,
+  type FloorMatType,
   type OverrideSalesStatus,
 } from "@/lib/planning/floor-mat-sets";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
@@ -41,6 +44,7 @@ export interface ListSkuMasterQuery {
   limit: number;
   salesType: string;
   type: string;
+  floorMatType: string;
 }
 
 export interface UpdateSkuMasterInput {
@@ -52,17 +56,19 @@ export interface UpdateSkuMasterInput {
   weightKg: unknown;
   status: unknown;
   salesStatus: unknown;
+  floorMatType?: unknown;
   originalOrCustom: unknown;
   /** Floor mat set links. Omitted = leave the stored set untouched. */
   floorMatSet?: unknown;
 }
 
-const VALID_TYPE_FILTERS: readonly string[] = OVERRIDE_SALES_STATUSES;
+const VALID_TYPE_FILTERS: readonly string[] = ["In Production", ...OVERRIDE_SALES_STATUSES];
+const VALID_FLOOR_MAT_TYPE_FILTERS: readonly string[] = FLOOR_MAT_TYPES;
 const VALID_SALES_STATUSES: readonly string[] = OVERRIDE_SALES_STATUSES;
 const VALID_SALES_TYPES = ["Original", "Custom"] as const;
 
-const floorMatOnlyStatusMessage = (masterSku: string, status: string) =>
-  `${status} is a floor mat status and cannot be set on ${masterSku}`;
+const floorMatOnlyTypeMessage = (masterSku: string, floorMatType: string) =>
+  `${floorMatType} is a floor mat type and cannot be set on ${masterSku}`;
 
 /** Reads one import cell that may be a string, an array, or absent. */
 function importCell(value: unknown): string | unknown[] | null {
@@ -134,6 +140,7 @@ function shapeProduct(row: ProductRow, floorMatSet: FloorMatSet | null = null) {
     categoryCode: row.category_code ?? inferred.categoryCode,
     status: row.status ?? "active",
     salesStatus: row.sales_status ?? null,
+    floorMatType: row.floor_mat_type ?? null,
     originalOrCustom: row.original_or_custom ?? "Original",
     moq: Number(row.moq ?? inferred.moq),
     // Intentional: falls back to inferred.moq (not a distinct "inferred order multiple"),
@@ -176,6 +183,11 @@ export const SkuMasterService = {
       throw new ValidationError("Invalid type filter");
     }
 
+    const floorMatTypeFilter = query.floorMatType || "all";
+    if (floorMatTypeFilter !== "all" && !VALID_FLOOR_MAT_TYPE_FILTERS.includes(floorMatTypeFilter)) {
+      throw new ValidationError("Invalid floorMatType filter");
+    }
+
     const page = Math.max(1, Number(query.page || 1));
     const limit = Math.min(200, Math.max(20, Number(query.limit || 50)));
     const productValues = query.product ? query.product.split(",").map((v) => v.trim()).filter(Boolean) : [];
@@ -189,6 +201,7 @@ export const SkuMasterService = {
       status: status as ResolvedSkuMasterListQuery["status"],
       salesType: salesType as ResolvedSkuMasterListQuery["salesType"],
       typeFilter: typeFilter as ResolvedSkuMasterListQuery["typeFilter"],
+      floorMatTypeFilter: floorMatTypeFilter as ResolvedSkuMasterListQuery["floorMatTypeFilter"],
     };
 
     const [total, rows] = await Promise.all([
@@ -223,6 +236,11 @@ export const SkuMasterService = {
     const statusValue = input.status == null ? null : String(input.status).trim().toLowerCase();
     const salesStatusRaw = input.salesStatus == null ? undefined : String(input.salesStatus).trim();
     const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
+    const floorMatTypeSpecified = Object.prototype.hasOwnProperty.call(input, "floorMatType");
+    const floorMatTypeRaw = input.floorMatType == null ? null : String(input.floorMatType).trim();
+    const floorMatTypeValue = floorMatTypeSpecified
+      ? floorMatTypeRaw === "" ? null : floorMatTypeRaw
+      : undefined;
     const salesTypeRaw = input.originalOrCustom == null ? undefined : String(input.originalOrCustom).trim();
     // "Part" is derived from the SKU code (see originalOrCustomSql) and is what the UI
     // displays for part SKUs; a client echoing it back means "no override change", not
@@ -234,8 +252,11 @@ export const SkuMasterService = {
     if (salesStatusValue != null && !VALID_SALES_STATUSES.includes(salesStatusValue)) {
       throw new ValidationError("Invalid salesStatus");
     }
-    if (isFloorMatSalesStatus(salesStatusValue) && !isFloorMatSku(masterSku)) {
-      throw new ValidationError(floorMatOnlyStatusMessage(masterSku, salesStatusValue));
+    if (floorMatTypeValue != null && !isFloorMatType(floorMatTypeValue)) {
+      throw new ValidationError("Invalid floorMatType");
+    }
+    if (floorMatTypeValue != null && !isFloorMatSku(masterSku)) {
+      throw new ValidationError(floorMatOnlyTypeMessage(masterSku, floorMatTypeValue));
     }
     if (salesTypeOverride != null && !VALID_SALES_TYPES.includes(salesTypeOverride as (typeof VALID_SALES_TYPES)[number])) {
       throw new ValidationError("Invalid originalOrCustom");
@@ -272,6 +293,8 @@ export const SkuMasterService = {
       weightKg,
       status: statusValue as "active" | "inactive" | null,
       salesStatus: salesStatusValue,
+      floorMatType: floorMatTypeValue as FloorMatType | null | undefined,
+      floorMatTypeSpecified,
       salesTypeOverride: salesTypeOverride as "Original" | "Custom" | null | undefined,
     });
 
@@ -285,7 +308,7 @@ export const SkuMasterService = {
         session?.user?.name ?? session?.user?.email ?? session?.user?.id ?? null
       );
     }
-    // Status, MOQ, CBM, Type and the floor mat set links all feed the planning grid.
+    // Status, MOQ, CBM, Floor Mat Type and set links all feed the planning grid.
     await invalidatePlanningDashboardCache();
 
     void logAudit({
@@ -298,7 +321,8 @@ export const SkuMasterService = {
       action: statusValue === "inactive" ? "delete" : "update",
       after: Object.fromEntries(
         Object.entries({
-          moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue, originalOrCustom: salesTypeOverride,
+          moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue,
+          floorMatType: floorMatTypeValue, originalOrCustom: salesTypeOverride,
           floorMatSet: floorMatSet ? describeFloorMatSet(floorMatSet) ?? "(cleared)" : undefined,
         })
           .filter(([, v]) => v != null)
@@ -324,23 +348,27 @@ export const SkuMasterService = {
       const status = normalizedStatus === "active" || normalizedStatus === "inactive" ? normalizedStatus : undefined;
       const rawSalesStatus = String(row?.salesStatus ?? "").trim();
       const salesStatus: OverrideSalesStatus | undefined = parseOverrideSalesStatus(rawSalesStatus);
+      const rawFloorMatType = String(row?.floorMatType ?? "").trim();
+      const floorMatType: FloorMatType | undefined = parseFloorMatType(rawFloorMatType);
 
       if (rawStatus && !status) {
         throw new ValidationError(`Invalid Status for ${masterSku || "SKU row"}: ${rawStatus}`);
       }
       if (rawSalesStatus && !salesStatus) {
-        throw new ValidationError(`Invalid Type for ${masterSku || "SKU row"}: ${rawSalesStatus}`);
+        throw new ValidationError(`Invalid Sales Status for ${masterSku || "SKU row"}: ${rawSalesStatus}`);
       }
-
-      if (isFloorMatSalesStatus(salesStatus) && !isFloorMatSku(masterSku)) {
-        throw new ValidationError(floorMatOnlyStatusMessage(masterSku || "SKU row", salesStatus));
+      if (rawFloorMatType && !floorMatType) {
+        throw new ValidationError(`Invalid Floor Mat Type for ${masterSku || "SKU row"}: ${rawFloorMatType}`);
+      }
+      if (floorMatType && !isFloorMatSku(masterSku)) {
+        throw new ValidationError(floorMatOnlyTypeMessage(masterSku || "SKU row", floorMatType));
       }
       const setFields = parseSetImportFields(masterSku, row);
       const hasSetFields = hasFloorMatSetImportFields(setFields);
 
       if (
         !masterSku ||
-        (cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null && !hasSetFields)
+        (cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null && floorMatType == null && !hasSetFields)
       ) {
         continue;
       }
@@ -348,7 +376,7 @@ export const SkuMasterService = {
         throw new ValidationError(`${masterSku} is not a floor mat SKU; set links and Pre-Order flags apply to CA-FM- SKUs only`);
       }
 
-      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, ...setFields });
+      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, floorMatType, ...setFields });
     }
 
     return [...rowsBySku.values()];
@@ -393,7 +421,7 @@ export const SkuMasterService = {
   async previewExcelImport(rawRows: unknown[]) {
     const rows = this.parseExcelRows(rawRows);
     if (rows.length === 0) {
-      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
+      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Floor Mat Type rows found");
     }
 
     const [existingBySku, { resolved: setsBySku, warnings: floorMatSetWarnings }] = await Promise.all([
@@ -419,6 +447,7 @@ export const SkuMasterService = {
         orderMultiple: existing ? row.orderMultiple ?? existing.orderMultiple : row.orderMultiple ?? defaults.moq,
         status: existing ? row.status ?? existing.status : row.status ?? "active",
         salesStatus: existing ? row.salesStatus ?? existing.salesStatus : row.salesStatus ?? null,
+        floorMatType: existing ? row.floorMatType ?? existing.floorMatType : row.floorMatType ?? null,
         floorMatSet: set ? describeFloorMatSet(set.next) : null,
       };
       const current = existing ? { ...existing, floorMatSet: set ? describeFloorMatSet(set.current) : null } : null;
@@ -429,9 +458,10 @@ export const SkuMasterService = {
             existing.orderMultiple !== next.orderMultiple ? "orderMultiple" : null,
             existing.status !== next.status ? "status" : null,
             existing.salesStatus !== next.salesStatus ? "salesStatus" : null,
+            existing.floorMatType !== next.floorMatType ? "floorMatType" : null,
             set?.changed ? "floorMatSet" : null,
           ].filter((field): field is string => field !== null)
-        : ["cbmPerUnit", "moq", "orderMultiple", "status", "salesStatus", ...(set ? ["floorMatSet"] : [])];
+        : ["cbmPerUnit", "moq", "orderMultiple", "status", "salesStatus", "floorMatType", ...(set ? ["floorMatSet"] : [])];
       const action: "insert" | "update" | "unchanged" = existing
         ? changedFields.length > 0
           ? "update"
@@ -452,7 +482,7 @@ export const SkuMasterService = {
   async applyExcelImport(rawRows: unknown[]) {
     const rows = this.parseExcelRows(rawRows);
     if (rows.length === 0) {
-      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
+      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Floor Mat Type rows found");
     }
 
     const { resolved: setsBySku } = await this.resolveFloorMatSetImports(rows);

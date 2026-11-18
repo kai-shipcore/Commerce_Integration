@@ -136,8 +136,8 @@ describe("cleared Con. Qty override", () => {
 });
 
 describe("floor mat back orders along the chain", () => {
-  const chainFor = (salesStatus: DemandRow["sales_status"]) => computeContainerChain(
-    { ...row("CA-FM-80-FM15116"), sales_status: salesStatus }, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+  const chainFor = (floorMatType: DemandRow["floor_mat_type"]) => computeContainerChain(
+    { ...row("CA-FM-80-FM15116"), floor_mat_type: floorMatType }, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
   ).get("112-CA");
 
   it("accumulates a forecast shortfall for a full set and a 3rd Row", () => {
@@ -152,7 +152,7 @@ describe("floor mat back orders along the chain", () => {
   });
 
   it("still carries a component's live back order until a container covers it", () => {
-    const owing = { ...row("CA-FM-TX-80-T1-FD-F509"), sales_status: "1st Row" as const, total_stock: 0, back: -8 };
+    const owing = { ...row("CA-FM-TX-80-T1-FD-F509"), floor_mat_type: "1st Row" as const, total_stock: 0, back: -8 };
     const result = computeContainerChain(owing, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS);
     expect(result.get("Base")?.backorder).toBe(8);
     // 5 arrive against 8 owed: 3 still owed, and no forecast sales added on top.

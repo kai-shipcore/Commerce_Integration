@@ -228,6 +228,7 @@ export const DemandPlanningRepository = {
         s.sales_status,
         'Original'
       )                                                     AS sales_status,
+      p.floor_mat_type                                     AS floor_mat_type,
       p.category_code                                      AS category_code,
       COALESCE(p.cbm_per_unit, 0)::float8                  AS cbm_per_unit,
       p.memo                                               AS memo,

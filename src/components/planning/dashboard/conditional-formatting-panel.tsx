@@ -41,14 +41,33 @@ function sameRange(left: ConditionalFormatRange, right: ConditionalFormatRange):
     && leftEntries.every((entry, index) => entry === rightEntries[index]);
 }
 
-function newRule(range: ConditionalFormatRange, fillColor: string): ConditionalFormatRule {
+/**
+ * A new rule formats nothing until the user picks a style. A conditional
+ * style outranks column and cell colours, so seeding it with the cell's
+ * current look pinned that look: the rule was invisible, yet every matching
+ * cell ignored any later column colour (reported on the Floor Mat columns,
+ * where the pinned colour was the group's default green).
+ */
+export function newConditionalFormatRule(range: ConditionalFormatRange): ConditionalFormatRule {
   const id = typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `rule-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return {
-    id, range, operator: "greaterThan", value: "0", enabled: true,
-    style: { fillColor, textColor: "#000000", bold: false, fontSize: 11 },
-  };
+  return { id, range, operator: "greaterThan", value: "0", enabled: true, style: {} };
+}
+
+/** Applies a style patch; `undefined` removes the property instead of setting
+ *  it, so Reset leaves the cell's own formatting in charge. Rules merge in
+ *  order, and a key left present as `undefined` would erase an earlier rule's
+ *  value for the same cell. */
+export function patchConditionalFormatStyle(
+  style: ConditionalFormatStyle,
+  patch: Partial<ConditionalFormatStyle>,
+): ConditionalFormatStyle {
+  const next: ConditionalFormatStyle = { ...style, ...patch };
+  for (const key of Object.keys(next) as Array<keyof ConditionalFormatStyle>) {
+    if (next[key] === undefined) delete next[key];
+  }
+  return next;
 }
 
 export function conditionalRangeLabel(range: ConditionalFormatRange, pick: (ko: string, en: string) => string): string {
@@ -84,6 +103,8 @@ export function ConditionalFormattingPanel({
   open: boolean;
   rules: ConditionalFormatRule[];
   currentRange: ConditionalFormatRange | null;
+  /** The selection's current background. Shown behind the preview while a
+   *  rule has no fill of its own; never written into the rule. */
   defaultFillColor: string;
   onChange: (rules: ConditionalFormatRule[]) => void;
   onPreview: (rules: ConditionalFormatRule[] | null) => void;
@@ -91,7 +112,7 @@ export function ConditionalFormattingPanel({
 }) {
   const { pick } = useI18n();
   const initialDraft = currentRange && !savedRules.some((rule) => sameRange(rule.range, currentRange))
-    ? newRule(currentRange, defaultFillColor)
+    ? newConditionalFormatRule(currentRange)
     : null;
   const [rules, setRules] = useState<ConditionalFormatRule[]>(() => (
     // Put a new selection first so its live Apply-to-range field is visible
@@ -114,11 +135,11 @@ export function ConditionalFormattingPanel({
     setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
   };
   const updateStyle = (id: string, patch: Partial<ConditionalFormatStyle>) => {
-    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, style: { ...rule.style, ...patch } } : rule));
+    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, style: patchConditionalFormatStyle(rule.style, patch) } : rule));
   };
   const addRule = () => {
     if (!currentRange) return;
-    const nextRule = newRule(currentRange, defaultFillColor);
+    const nextRule = newConditionalFormatRule(currentRange);
     setRules((current) => [
       ...current.map((rule) => rule.id === draftRuleId ? { ...rule, range: currentRange } : rule),
       nextRule,
@@ -164,7 +185,7 @@ export function ConditionalFormattingPanel({
               </div>
             )}
             <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 6 }}>{pick("서식 스타일", "Formatting style")}</label>
-            <div style={{ padding: 10, border: "1px solid #CBD5E1", borderRadius: 6, background: rule.style.fillColor ?? "#fff", color: rule.style.textColor ?? "#000", fontSize: rule.style.fontSize ?? 11, fontWeight: rule.style.bold ? 700 : 400, fontStyle: rule.style.italic ? "italic" : "normal", textDecoration: [rule.style.underline ? "underline" : "", rule.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ") || "none", marginBottom: 8 }}>{pick("미리보기", "Preview")} Aa 123</div>
+            <div style={{ padding: 10, border: "1px solid #CBD5E1", borderRadius: 6, background: rule.style.fillColor ?? defaultFillColor, color: rule.style.textColor ?? "#000", fontSize: rule.style.fontSize ?? 11, fontWeight: rule.style.bold ? 700 : 400, fontStyle: rule.style.italic ? "italic" : "normal", textDecoration: [rule.style.underline ? "underline" : "", rule.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ") || "none", marginBottom: 8 }}>{pick("미리보기", "Preview")} Aa 123</div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
               <button type="button" title={pick("굵게", "Bold")} style={styleButton(Boolean(rule.style.bold))} onClick={() => updateStyle(rule.id, { bold: !rule.style.bold })}>B</button>
               <button type="button" title={pick("기울임", "Italic")} style={{ ...styleButton(Boolean(rule.style.italic)), fontStyle: "italic" }} onClick={() => updateStyle(rule.id, { italic: !rule.style.italic })}>I</button>
@@ -175,7 +196,7 @@ export function ConditionalFormattingPanel({
                 targetLabel={pick("조건부 서식 · 글자색", "Conditioning formatting · Font color")}
                 ariaKind="font"
                 onApply={(value) => updateStyle(rule.id, { textColor: value })}
-                onReset={() => updateStyle(rule.id, { textColor: "#000000" })}
+                onReset={() => updateStyle(rule.id, { textColor: undefined })}
                 trigger={<button type="button" title={pick("글자색", "Font color")} style={{ ...styleButton(false), color: rule.style.textColor ?? "#000000", borderBottom: `4px solid ${rule.style.textColor ?? "#000000"}` }}>A</button>}
               />
               <PlanningColorPalettePopover
@@ -183,7 +204,7 @@ export function ConditionalFormattingPanel({
                 targetLabel={pick("조건부 서식 · 채우기 색", "Conditioning formatting · Fill color")}
                 ariaKind="fill"
                 onApply={(value) => updateStyle(rule.id, { fillColor: value })}
-                onReset={() => updateStyle(rule.id, { fillColor: "#FFFFFF" })}
+                onReset={() => updateStyle(rule.id, { fillColor: undefined })}
                 trigger={<button type="button" title={pick("채우기 색", "Fill color")} style={{ ...styleButton(false), background: rule.style.fillColor ?? "#FFFFFF" }}>▰</button>}
               />
               <select title={pick("글자 크기", "Font size")} value={rule.style.fontSize ?? 11} onChange={(event) => updateStyle(rule.id, { fontSize: Number(event.target.value) })} style={{ height: 32, border: "1px solid #CBD5E1", borderRadius: 5, background: "#fff" }}>

@@ -23,6 +23,7 @@ import {
   isResizableColumnId,
   checkedBaseCategories,
   matchesCategorySelection,
+  matchesFloorMatTypeSelection,
   matchesSalesStatusSelection,
   matchesUrgencySelection,
   skuMatchesPartFilters,
@@ -30,7 +31,7 @@ import {
 } from "./columns";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SalesStatus, SkuPartFiltersByCategory, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, FloorMatType, ResizableColumnId, RowHeights, SalesStatus, SkuPartFiltersByCategory, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -73,6 +74,8 @@ export interface DemandPlanningGridProps {
   categoryFilter: CategoryFilter[];
   /** Empty means every status — see matchesSalesStatusSelection. */
   salesStatusFilter: SalesStatus[];
+  /** Empty means every type; non-Floor Mat rows are never narrowed by it. */
+  floorMatTypeFilter: FloorMatType[];
   /** Empty means every urgency band. */
   urgencyFilter: UrgencyFilter[];
   search: string;
@@ -194,6 +197,7 @@ const SORT_VALUE_BY_COLUMN: Partial<Record<string, (row: DemandRow) => SortValue
   cbm: (row) => row.cbm,
   back: (row) => row.back,
   status: (row) => row.sales_status,
+  floor_mat_type: (row) => row.floor_mat_type,
   sku: (row) => row.sku,
   west: (row) => row.west_stock,
   east: (row) => row.east_stock,
@@ -355,6 +359,7 @@ export function DemandPlanningGrid({
   data,
   categoryFilter,
   salesStatusFilter,
+  floorMatTypeFilter,
   urgencyFilter,
   search,
   skuPartFilters,
@@ -489,11 +494,12 @@ export function DemandPlanningGrid({
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (!matchesSalesStatusSelection(r, salesStatusFilter)) return false;
+      if (!matchesFloorMatTypeSelection(r, floorMatTypeFilter)) return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       return matchesUrgencySelection(r, urgencyFilter);
     });
-  }, [ROWS, categoryFilter, salesStatusFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);
+  }, [ROWS, categoryFilter, floorMatTypeFilter, salesStatusFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
