@@ -864,6 +864,31 @@ export type ColumnOrder = string[];
 export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
+
+/** Cell keys are `<sku>::<physical column id>`. An explicit cell fill normally
+ * overrides its column fill, but applying a fill to an entire column means
+ * those overrides must be removed so every row follows the new column color. */
+export function cellColorOverridesForColumns(
+  colors: CellColorSettings,
+  columnIds: readonly string[],
+): Array<[string, string]> {
+  const selected = new Set(columnIds);
+  return Object.entries(colors).filter(([key]) => {
+    const separator = key.indexOf("::");
+    return separator >= 0 && selected.has(key.slice(separator + 2));
+  });
+}
+
+export function clearCellColorOverridesForColumns(
+  colors: CellColorSettings,
+  columnIds: readonly string[],
+): CellColorSettings {
+  const overrides = cellColorOverridesForColumns(colors, columnIds);
+  if (!overrides.length) return colors;
+  const next = { ...colors };
+  for (const [key] of overrides) delete next[key];
+  return next;
+}
 export type TextFormatSettings = { fontSize?: number; bold?: boolean; color?: string };
 export type ColumnTextFormatSettings = Record<string, { cell?: TextFormatSettings; header?: TextFormatSettings }>;
 export type CellTextFormatSettings = Record<string, TextFormatSettings>;

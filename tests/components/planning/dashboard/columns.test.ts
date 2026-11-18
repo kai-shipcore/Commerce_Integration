@@ -19,6 +19,8 @@ import {
   FLOOR_MAT_COLUMN_IDS,
   conSubColumnAppliesToCategories,
   columnAppliesToCategories,
+  cellColorOverridesForColumns,
+  clearCellColorOverridesForColumns,
   ensureAdditionalNotesInColumnOrder,
   normalizeDashboardFilters,
   loadSavedRowHeight,
@@ -163,6 +165,31 @@ describe("Floor Mat Type column", () => {
   it("migrates saved column orders beside Sales Status", () => {
     expect(ensureAdditionalNotesInColumnOrder(["back", "status", "sku"]).slice(0, 4))
       .toEqual(["back", "status", "floor_mat_type", "sku"]);
+  });
+});
+
+describe("whole-column colors", () => {
+  const colors = {
+    "CA-FM-80-FM15118::fm02_2nd": "#F7F3E8",
+    "CA-FM-80-FM15165::fm02_2nd": "#F7F3E8",
+    "CA-FM-80-FM15118::sku": "#B6D7A8",
+    "CA-FM-80-FM15118::FM02::avail": "#FFE599",
+  };
+
+  it("finds only cell overrides belonging to the exact selected column", () => {
+    expect(cellColorOverridesForColumns(colors, ["fm02_2nd"]).map(([key]) => key)).toEqual([
+      "CA-FM-80-FM15118::fm02_2nd",
+      "CA-FM-80-FM15165::fm02_2nd",
+    ]);
+    expect(cellColorOverridesForColumns(colors, ["FM02::avail"]).map(([key]) => key))
+      .toEqual(["CA-FM-80-FM15118::FM02::avail"]);
+  });
+
+  it("clears those overrides so the new whole-column color can apply", () => {
+    expect(clearCellColorOverridesForColumns(colors, ["fm02_2nd"])).toEqual({
+      "CA-FM-80-FM15118::sku": "#B6D7A8",
+      "CA-FM-80-FM15118::FM02::avail": "#FFE599",
+    });
   });
 });
 
