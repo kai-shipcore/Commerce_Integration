@@ -128,13 +128,18 @@ function productCategoryWhere(categoryCodes: DashboardFilters["categoryCodes"]):
   return `(UPPER(p.category_code) = ANY($1::text[])${fallback})`;
 }
 
-// SKUs set to Inactive in SKU Master are dropped from the planning grid, and so
-// from every automatic order calculation, which only sees the grid's rows. A SKU
-// with no fc_products row at all is not inactive and stays.
-const EXCLUDE_INACTIVE_PRODUCT = `p.status IS DISTINCT FROM 'inactive'::shipcore.fc_product_status`;
+// Only SKUs that are Active in SKU Master reach the planning grid, and so every
+// automatic order calculation, which only sees the grid's rows. A stats row with
+// no fc_products row is left out as well: fc_stats rows are never deleted, so a
+// SKU that has since left the source data stays there with zero sales and stock,
+// and nobody can deactivate what SKU Master does not list (planning team,
+// 2026-11-18: CA-FM-80-FM14483-NEW and two more, stats rows from June / July).
+// A SKU new to the data is not lost by this: the Sync's backfill gives it an
+// active fc_products row in the same run.
+const ACTIVE_PRODUCT_ONLY = `p.status = 'active'::shipcore.fc_product_status`;
 
 function statsRowsWhere(categoryCodes: DashboardFilters["categoryCodes"]): string {
-  const conditions = [EXCLUDE_INACTIVE_PRODUCT, productCategoryWhere(categoryCodes)].filter(Boolean);
+  const conditions = [ACTIVE_PRODUCT_ONLY, productCategoryWhere(categoryCodes)].filter(Boolean);
   return `WHERE ${conditions.join(" AND ")}`;
 }
 
