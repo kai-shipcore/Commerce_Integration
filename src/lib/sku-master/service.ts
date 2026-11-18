@@ -62,7 +62,7 @@ export interface UpdateSkuMasterInput {
   floorMatSet?: unknown;
 }
 
-const VALID_TYPE_FILTERS: readonly string[] = OVERRIDE_SALES_STATUSES;
+const VALID_TYPE_FILTERS: readonly string[] = ["In Production", ...OVERRIDE_SALES_STATUSES];
 const VALID_FLOOR_MAT_TYPE_FILTERS: readonly string[] = FLOOR_MAT_TYPES;
 const VALID_SALES_STATUSES: readonly string[] = OVERRIDE_SALES_STATUSES;
 const VALID_SALES_TYPES = ["Original", "Custom"] as const;

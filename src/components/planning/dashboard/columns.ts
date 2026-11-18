@@ -7,7 +7,7 @@ import {
 } from "@/lib/planning/column-filter";
 import { normalizeGridSort, type GridSort } from "@/lib/planning/grid-sort";
 import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
-import { formatPreOrder } from "@/lib/planning/floor-mat-sets";
+import { FLOOR_MAT_TYPES, formatPreOrder, type FloorMatType } from "@/lib/planning/floor-mat-sets";
 import { formatSplit, type MasterPairing, type PairingLocation } from "@/lib/planning/floor-mat-pairing";
 import {
   componentPairingLines,
@@ -542,6 +542,9 @@ export const SALES_STATUS_VALUES: SalesStatus[] = [
   "Original", "Custom", "Part", "SWC", "Hold", "Discontinued", "TBD",
 ];
 
+export { FLOOR_MAT_TYPES };
+export type { FloorMatType };
+
 /** Where a row sits when `fc_products` has no category for it: the SKU string
  *  is the fallback, same order of checks the server's mirror clause uses. */
 export function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
@@ -581,6 +584,14 @@ export function matchesCategorySelection(row: DemandRow, selected: CategoryFilte
 export function matchesSalesStatusSelection(row: DemandRow, selected: SalesStatus[]): boolean {
   if (selected.length === 0) return true;
   return selected.includes(row.sales_status);
+}
+
+/** Floor Mat Type is an independent SKU Master field. When several product
+ * categories are open together, this narrows Floor Mat rows only; rows from
+ * the other selected categories remain visible. */
+export function matchesFloorMatTypeSelection(row: DemandRow, selected: FloorMatType[]): boolean {
+  if (selected.length === 0 || categoryCodeForRow(row) !== "FM") return true;
+  return row.floor_mat_type != null && selected.includes(row.floor_mat_type);
 }
 
 export function matchesUrgencySelection(row: DemandRow, selected: UrgencyFilter[]): boolean {
@@ -656,6 +667,8 @@ export interface DashboardFiltersState {
   columnFilters: Map<string, ColumnFilter>;
   /** Empty means every status, not none. */
   salesStatusFilter: SalesStatus[];
+  /** Empty means every Floor Mat Type. Applies to Floor Mat rows only. */
+  floorMatTypeFilter: FloorMatType[];
   /** Empty means every urgency, not none. */
   urgencyFilter: UrgencyFilter[];
   skuPartFilters: SkuPartFiltersByCategory;
@@ -667,6 +680,7 @@ export interface DashboardFiltersState {
 
 const URGENCY_FILTER_VALUES = new Set<UrgencyFilter>(["crit", "warn", "bo", "over"]);
 const SALES_STATUS_SET = new Set<string>(SALES_STATUS_VALUES);
+const FLOOR_MAT_TYPE_SET = new Set<string>(FLOOR_MAT_TYPES);
 
 /** What the single-choice "All Types" select used to store, and the status
  *  each of its values stood for. Saved preferences outlive the widget, so a
@@ -682,6 +696,11 @@ function parseSalesStatusFilter(value: unknown): SalesStatus[] {
   if (typeof value === "string") return LEGACY_PRODUCT_FILTER[value] ?? [];
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is SalesStatus => typeof entry === "string" && SALES_STATUS_SET.has(entry));
+}
+
+function parseFloorMatTypeFilter(value: unknown): FloorMatType[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is FloorMatType => typeof entry === "string" && FLOOR_MAT_TYPE_SET.has(entry));
 }
 
 /** Reads `?status=`, which may name more than one band. A link from the home
@@ -708,6 +727,7 @@ export function serializeDashboardFilters(filters: DashboardFiltersState): Recor
   return {
     columnFilters: serializeColumnFilters(filters.columnFilters),
     salesStatusFilter: filters.salesStatusFilter,
+    floorMatTypeFilter: filters.floorMatTypeFilter,
     urgencyFilter: filters.urgencyFilter,
     skuPartFilters: filters.skuPartFilters,
     sort: filters.sort,
@@ -769,6 +789,7 @@ export function normalizeDashboardFilters(value: unknown): DashboardFiltersState
   const empty: DashboardFiltersState = {
     columnFilters: new Map(),
     salesStatusFilter: [],
+    floorMatTypeFilter: [],
     urgencyFilter: [],
     skuPartFilters: {},
     sort: null,
@@ -783,6 +804,7 @@ export function normalizeDashboardFilters(value: unknown): DashboardFiltersState
     // `productFilter` is the key the single-choice select wrote; anything
     // saved before this became a multi-select still comes back through it.
     salesStatusFilter: parseSalesStatusFilter(candidate.salesStatusFilter ?? candidate.productFilter),
+    floorMatTypeFilter: parseFloorMatTypeFilter(candidate.floorMatTypeFilter),
     urgencyFilter: parseUrgencyFilter(candidate.urgencyFilter),
     skuPartFilters,
     sort: normalizeGridSort(candidate.sort),

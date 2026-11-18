@@ -103,6 +103,16 @@ describe("SkuMasterRepository.buildListFilters", () => {
     expect(whereClause).toContain("$2");
     expect(params).toEqual(["active", "Part"]);
   });
+
+  it("treats In Production as the absence of a lifecycle override", () => {
+    const { whereClause, params } = SkuMasterRepository.buildListFilters({
+      ...base,
+      typeFilter: "In Production",
+    });
+
+    expect(whereClause).toContain("IS NULL");
+    expect(params).not.toContain("In Production");
+  });
 });
 
 describe("SkuMasterRepository.findBySku", () => {

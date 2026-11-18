@@ -37,7 +37,7 @@ export interface ResolvedSkuMasterListQuery {
   productValues: string[];
   status: "all" | "active" | "inactive";
   salesType: "all" | "Original" | "Custom" | "Part";
-  typeFilter: "all" | OverrideSalesStatus;
+  typeFilter: "all" | "In Production" | OverrideSalesStatus;
   floorMatTypeFilter: "all" | FloorMatType;
 }
 
@@ -272,8 +272,12 @@ export const SkuMasterRepository = {
     }
 
     if (resolved.typeFilter !== "all") {
-      params.push(resolved.typeFilter);
-      filters.push(`${overrideStatusSql} = $${params.length}`);
+      if (resolved.typeFilter === "In Production") {
+        filters.push(`${overrideStatusSql} IS NULL`);
+      } else {
+        params.push(resolved.typeFilter);
+        filters.push(`${overrideStatusSql} = $${params.length}`);
+      }
     }
 
     if (resolved.floorMatTypeFilter !== "all") {

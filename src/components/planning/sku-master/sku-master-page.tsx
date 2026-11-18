@@ -70,7 +70,7 @@ type SkuMasterCategoryFilter = SkuMasterProductKey;
 type SalesTypeFilter = "all" | "Original" | "Custom" | "Part";
 // Filters on the TYPE column (manual override) — distinct from SalesTypeFilter, which filters the
 // separate ORIGINAL/CUSTOM column.
-type TypeFilter = "all" | OverrideSalesStatus;
+type TypeFilter = "all" | "In Production" | OverrideSalesStatus;
 type FloorMatTypeFilter = "all" | FloorMatType;
 
 const productMeta: Record<
@@ -927,6 +927,7 @@ export function SkuMasterPage() {
             className="form-input h-9 w-36 bg-white text-xs"
           >
             <option value="all">{pick("전체 판매 상태", "All Sales Statuses")}</option>
+            <option value="In Production">In Production</option>
             <option value="Hold">Hold</option>
             <option value="Discontinued">Discontinued</option>
             <option value="TBD">TBD</option>
@@ -1672,7 +1673,7 @@ function EditableSalesStatus({
           onChange={(e) => onChange(e.target.value === "" ? null : e.target.value as OverrideSalesStatus)}
           className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
         >
-          <option value="">—</option>
+          <option value="">In Production</option>
           {SALES_STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
@@ -1694,7 +1695,9 @@ function EditableSalesStatus({
           {value}
         </span>
       ) : (
-        <span className="text-xs text-muted-foreground">—</span>
+        <span className="inline-flex items-center whitespace-nowrap rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+          In Production
+        </span>
       )}
     </div>
   );

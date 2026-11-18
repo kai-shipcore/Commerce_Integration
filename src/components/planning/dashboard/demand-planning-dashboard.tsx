@@ -48,6 +48,7 @@ import {
   getPlanningAnchor,
   setPlanningAnchor,
   emptySkuPartFilters,
+  FLOOR_MAT_TYPES,
   baseCategoryForRow,
   hasAnySkuPartFilter,
   type SkuPartFiltersByCategory,
@@ -70,7 +71,7 @@ import {
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, DashboardFiltersState, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, DashboardFiltersState, FloorMatType, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -193,6 +194,11 @@ const SALES_STATUS_FILTER_OPTIONS: ToolbarMultiSelectOption<SalesStatus>[] = [
   { value: "Discontinued", label: "Discontinued" },
   { value: "TBD", label: "TBD" },
 ];
+
+const FLOOR_MAT_TYPE_FILTER_OPTIONS: ToolbarMultiSelectOption<FloorMatType>[] = FLOOR_MAT_TYPES.map((value) => ({
+  value,
+  label: value,
+}));
 
 /** The urgency bands, keeping the colours the single-choice select used to
  *  paint itself with. "Overstock" had no option at all before, even though a
@@ -1027,6 +1033,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // say. Held as arrays rather than Sets so their identity is stable across
   // renders: the grid's row memo takes them as dependencies, over ~11k rows.
   const [salesStatusFilter, setSalesStatusFilter] = useState<SalesStatus[]>(savedFilters.salesStatusFilter);
+  const [floorMatTypeFilter, setFloorMatTypeFilter] = useState<FloorMatType[]>(savedFilters.floorMatTypeFilter);
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter[]>(savedFilters.urgencyFilter);
   // Not restored: a search is typed to find one thing, and one restored days
   // later reads as rows gone missing.
@@ -1080,12 +1087,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const activeFilterCount = useMemo(() => (
     columnFilterCount
     + (salesStatusFilter.length > 0 ? 1 : 0)
+    + (categoryFilter.includes("fm") && floorMatTypeFilter.length > 0 ? 1 : 0)
     + (urgencyFilter.length > 0 ? 1 : 0)
     + (search.trim() ? 1 : 0)
     + Object.values(skuPartFilters)
       .flatMap((group) => Object.values(group ?? {}))
       .filter((values) => values.length > 0).length
-  ), [columnFilterCount, salesStatusFilter, search, skuPartFilters, urgencyFilter]);
+  ), [categoryFilter, columnFilterCount, floorMatTypeFilter, salesStatusFilter, search, skuPartFilters, urgencyFilter]);
 
   const handleCategoryFilter = useCallback((next: CategoryFilter[]) => {
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
@@ -1536,6 +1544,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       mirrorSet(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters(filters)));
       setColumnFilters(filters.columnFilters);
       setSalesStatusFilter(filters.salesStatusFilter);
+      setFloorMatTypeFilter(filters.floorMatTypeFilter);
       setSkuPartFilters(filters.skuPartFilters);
       setGridSort(filters.sort);
       // The URL wins for urgency on the initial load: a link shared with
@@ -1802,9 +1811,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     if (!dbPrefsLoaded || activeScenarioId !== null) return;
     window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters({
-      columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+      columnFilters, salesStatusFilter, floorMatTypeFilter, urgencyFilter, skuPartFilters, sort: gridSort,
     })));
-  }, [activeScenarioId, columnFilters, dbPrefsLoaded, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
+  }, [activeScenarioId, columnFilters, dbPrefsLoaded, floorMatTypeFilter, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
 
   /** Everything that makes up "how this tab looks", in one blob. The save
    *  effect writes it, and creating a tab seeds the new tab with it so a copy
@@ -1819,7 +1828,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
       [HEADER_HEIGHT_STORAGE_KEY]: headerHeight,
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
-        columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+        columnFilters, salesStatusFilter, floorMatTypeFilter, urgencyFilter, skuPartFilters, sort: gridSort,
       }),
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
@@ -1840,7 +1849,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     };
-  }, [formulaConfig, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+  }, [formulaConfig, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, floorMatTypeFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
 
   // Kept on refs so commitView can read the current view without being rebuilt
   // — and therefore re-registered — every time any of it changes.
@@ -2124,11 +2133,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const commitDashboardFilters = useCallback((patch: Partial<DashboardFiltersState>) => {
     commitView({
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
-        columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+        columnFilters, salesStatusFilter, floorMatTypeFilter, urgencyFilter, skuPartFilters, sort: gridSort,
         ...patch,
       }),
     });
-  }, [columnFilters, commitView, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
+  }, [columnFilters, commitView, floorMatTypeFilter, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
 
   const handleSortChange = useCallback((next: GridSort | null) => {
     commitDashboardFilters({ sort: next });
@@ -3047,14 +3056,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         hiddenContainerColumns: Array.from(columnSettingsDraft.hiddenContainerColumns).sort(),
       },
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
-        columnFilters, salesStatusFilter, urgencyFilter, sort: gridSort,
+        columnFilters, salesStatusFilter, floorMatTypeFilter, urgencyFilter, sort: gridSort,
         skuPartFilters: cloneSkuPartFilters(columnSettingsDraft.skuPartFilters),
       }),
     });
     setIsColumnSettingsOpen(false);
     setColumnSettingsDraft(null);
     setOpenSkuFilterKey(null);
-  }, [columnFilters, columnSettingsDraft, commitView, gridSort, salesStatusFilter, showMistake, urgencyFilter]);
+  }, [columnFilters, columnSettingsDraft, commitView, floorMatTypeFilter, gridSort, salesStatusFilter, showMistake, urgencyFilter]);
 
   const handleDraftPreset = useCallback((preset: "all" | "core" | "compact") => {
     setColumnSettingsDraft((current) => {
@@ -3256,6 +3265,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     commitDashboardFilters({
       columnFilters: new Map(),
       salesStatusFilter: [],
+      floorMatTypeFilter: [],
       urgencyFilter: [],
       skuPartFilters: {},
     });
@@ -3396,6 +3406,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onChange={(next) => commitDashboardFilters({ salesStatusFilter: next })}
           width={150}
         />
+
+        {categoryFilter.includes("fm") ? (
+          <>
+            <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
+            <ToolbarMultiSelect<FloorMatType>
+              ariaLabel={pick("플로어매트 유형 필터", "Floor Mat type filter")}
+              allLabel={pick("전체 Floor Mat 유형", "All Floor Mat Types")}
+              options={FLOOR_MAT_TYPE_FILTER_OPTIONS}
+              value={floorMatTypeFilter}
+              onChange={(next) => commitDashboardFilters({ floorMatTypeFilter: next })}
+              width={170}
+            />
+          </>
+        ) : null}
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
@@ -4750,6 +4774,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           loading={loading}
           categoryFilter={categoryFilter}
           salesStatusFilter={salesStatusFilter}
+          floorMatTypeFilter={floorMatTypeFilter}
           urgencyFilter={urgencyFilter}
           search={search}
           skuPartFilters={activeSkuPartFilters}
@@ -4843,6 +4868,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           loading={loading}
           categoryFilter={categoryFilter}
           salesStatusFilter={salesStatusFilter}
+          floorMatTypeFilter={floorMatTypeFilter}
           urgencyFilter={urgencyFilter}
           search={search}
           skuPartFilters={activeSkuPartFilters}

@@ -33,6 +33,7 @@ import {
   baseCategoryForRow,
   emptySkuPartFilters,
   matchesSalesStatusSelection,
+  matchesFloorMatTypeSelection,
   matchesUrgencySelection,
   parseUrgencyParam,
   normalizeHeaderHeight,
@@ -301,11 +302,13 @@ describe("normalizeDashboardFilters", () => {
     const filters = normalizeDashboardFilters({
       columnFilters: { sku: { mode: "values", values: ["A"] } },
       salesStatusFilter: ["Original", "Custom"],
+      floorMatTypeFilter: ["1+2 Set", "3rd Row"],
       urgencyFilter: ["crit", "warn"],
       skuPartFilters: { seat: ["FRONT"], color: ["BK"] },
     });
     expect(filters.columnFilters.size).toBe(1);
     expect(filters.salesStatusFilter).toEqual(["Original", "Custom"]);
+    expect(filters.floorMatTypeFilter).toEqual(["1+2 Set", "3rd Row"]);
     expect(filters.urgencyFilter).toEqual(["crit", "warn"]);
     // A flat blob names no category. Its keys are Seat Cover's vocabulary,
     // and `sc` is the first category that can account for all of them.
@@ -357,6 +360,7 @@ describe("normalizeDashboardFilters", () => {
       const filters = normalizeDashboardFilters(value);
       expect(filters.columnFilters.size).toBe(0);
       expect(filters.salesStatusFilter).toEqual([]);
+      expect(filters.floorMatTypeFilter).toEqual([]);
       expect(filters.urgencyFilter).toEqual([]);
     }
   });
@@ -364,10 +368,12 @@ describe("normalizeDashboardFilters", () => {
   it("rejects values outside the known sets rather than trusting storage", () => {
     const filters = normalizeDashboardFilters({
       salesStatusFilter: ["Original", "bogus"],
+      floorMatTypeFilter: ["1st Row", "bogus"],
       urgencyFilter: ["crit", "bogus"],
       skuPartFilters: { seat: "FRONT", unknownKey: ["x"] },
     });
     expect(filters.salesStatusFilter).toEqual(["Original"]);
+    expect(filters.floorMatTypeFilter).toEqual(["1st Row"]);
     expect(filters.urgencyFilter).toEqual(["crit"]);
     // Nothing readable carried a value, so no category is claimed at all.
     expect(filters.skuPartFilters).toEqual({});
@@ -528,6 +534,22 @@ describe("matchesSalesStatusSelection", () => {
       expect(matchesSalesStatusSelection(row({ sales_status: status }), [status])).toBe(true);
       expect(matchesSalesStatusSelection(row({ sales_status: "Original" }), [status])).toBe(false);
     }
+  });
+});
+
+describe("matchesFloorMatTypeSelection", () => {
+  it("lets everything through when no Floor Mat Type is selected", () => {
+    expect(matchesFloorMatTypeSelection(row({ category_code: "FM", floor_mat_type: "1+2 Set" }), [])).toBe(true);
+  });
+
+  it("narrows Floor Mat rows by the independent SKU Master field", () => {
+    expect(matchesFloorMatTypeSelection(row({ category_code: "FM", floor_mat_type: "1+2 Set" }), ["1+2 Set"])).toBe(true);
+    expect(matchesFloorMatTypeSelection(row({ category_code: "FM", floor_mat_type: "3rd Row" }), ["1+2 Set"])).toBe(false);
+    expect(matchesFloorMatTypeSelection(row({ category_code: "FM", floor_mat_type: null }), ["1+2 Set"])).toBe(false);
+  });
+
+  it("keeps non-Floor Mat rows in mixed-category views", () => {
+    expect(matchesFloorMatTypeSelection(row({ category_code: "SC", floor_mat_type: null }), ["1+2 Set"])).toBe(true);
   });
 });
 

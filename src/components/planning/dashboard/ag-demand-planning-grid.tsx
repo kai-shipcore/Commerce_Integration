@@ -39,6 +39,7 @@ import {
   conSubColumnAppliesToCategories,
   matchesAnyLogicalColumnId,
   matchesSalesStatusSelection,
+  matchesFloorMatTypeSelection,
   matchesUrgencySelection,
   normalizeColumnFilterMenuSize,
   normalizeHeaderHeight,
@@ -4183,6 +4184,7 @@ export function AgDemandPlanningGrid({
   loading,
   categoryFilter,
   salesStatusFilter,
+  floorMatTypeFilter,
   urgencyFilter,
   search,
   skuPartFilters,
@@ -4757,6 +4759,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (!matchesSalesStatusSelection(row, salesStatusFilter)) return false;
+      if (!matchesFloorMatTypeSelection(row, floorMatTypeFilter)) return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       return matchesUrgencySelection(row, urgencyFilter);
@@ -4773,7 +4776,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, data.rows, salesStatusFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, floorMatTypeFilter, salesStatusFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
 
   const visibleRows = useMemo(
     () => applyColumnFilters(
