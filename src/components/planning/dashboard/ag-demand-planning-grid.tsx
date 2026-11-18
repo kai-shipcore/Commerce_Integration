@@ -166,7 +166,7 @@ const CON_QTY_RAIL = "1px solid #5B8FC9";
 // Loose Sets Ordered when some of the sets gained in that container are split
 // between warehouses and need consolidating before they can ship.
 const LOOSE_SPLIT_FILL = "#FED7AA";
-// Front / Rear SKU that more than one floor mat master set uses.
+// Front / Rear / 3rd Row SKU that more than one floor mat set uses.
 const SHARED_COMPONENT_FILL = "#FEF9C3";
 const SELECTED_CELL_FILL = "#DBEAFE";
 
@@ -7908,6 +7908,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 ? MIN_SALES_APPLIED_FILL
               : (column.id === "fm_front" && isSharedFloorMatComponent(params.data?.fm_set?.frontSku, "front"))
                 || (column.id === "fm_rear" && isSharedFloorMatComponent(params.data?.fm_set?.rearSku, "rear"))
+                // The 3rd Row cell can list several SKUs: one shared SKU marks the cell.
+                || (column.id === "fm_third" && (params.data?.fm_set?.thirdRows ?? []).some((third) => isSharedFloorMatComponent(third.sku, "third")))
                 ? SHARED_COMPONENT_FILL
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",

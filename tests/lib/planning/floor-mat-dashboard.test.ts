@@ -83,6 +83,20 @@ describe("shared components", () => {
     expect(isSharedFloorMatComponent("T2-A", "front")).toBe(false);
   });
 
+  it("counts a set and its -C (1+2+3) version as one set", () => {
+    const third = (sku: string) => ({ sku, preOrder: null });
+    setFloorMatComponentUses(countFloorMatComponentUses([
+      row({ sku: "CA-FM-80-FM13259", fm_set: set("S1-BK-EN02", "S2-BK-EN02") }),
+      row({ sku: "CA-FM-80-FM13259-C", fm_set: { ...set("S1-BK-EN02", "S2-BK-EN02"), thirdRows: [third("S3-BK-EN02")] } }),
+      // Another set that shares the Rear and the 3rd Row, but not the Front.
+      row({ sku: "CA-FM-80-FM20000-C", fm_set: { ...set("S1-OTHER", "S2-BK-EN02"), thirdRows: [third("S3-BK-EN02"), third("S3-OWN")] } }),
+    ]));
+    expect(isSharedFloorMatComponent("S1-BK-EN02", "front")).toBe(false); // FM13259 and FM13259-C only
+    expect(isSharedFloorMatComponent("S2-BK-EN02", "rear")).toBe(true); // FM13259 and FM20000
+    expect(isSharedFloorMatComponent("S3-BK-EN02", "third")).toBe(true); // FM13259 and FM20000
+    expect(isSharedFloorMatComponent("S3-OWN", "third")).toBe(false);
+  });
+
   it("ignores pinned rows, which repeat a master", () => {
     const uses = countFloorMatComponentUses([
       row({ sku: "M", fm_set: set("F", "R") }),
