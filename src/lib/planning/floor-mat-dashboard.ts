@@ -184,6 +184,43 @@ export function pairsAfterContainer(sku: string, containerCode: string): number 
   return name === undefined ? null : pairsAfter(sku, name, false);
 }
 
+// ── Components shared between masters ────────────────────────────────────────
+//
+// A Front or Rear SKU that more than one master set lists is highlighted in the
+// Front / Rear columns, as on the planning sheet (conditional formatting
+// COUNTIF($O:$O, front) > 1 and COUNTIF($Q:$Q, rear) > 1). Each column is
+// counted on its own, as there: a SKU that is one master's Front and another's
+// Rear is not shared by this rule. Kept apart from the pairing view because it
+// needs no stock, so it also works on a historical (As of) view.
+
+export interface FloorMatComponentUses {
+  front: Map<string, number>;
+  rear: Map<string, number>;
+}
+
+/** How many masters among `rows` list each SKU as their Front, and as their Rear. */
+export function countFloorMatComponentUses(rows: readonly DemandRow[]): FloorMatComponentUses {
+  const uses: FloorMatComponentUses = { front: new Map(), rear: new Map() };
+  for (const row of rows) {
+    if (row.pinned || !row.fm_set) continue;
+    const { frontSku, rearSku } = row.fm_set;
+    if (frontSku) uses.front.set(frontSku, (uses.front.get(frontSku) ?? 0) + 1);
+    if (rearSku) uses.rear.set(rearSku, (uses.rear.get(rearSku) ?? 0) + 1);
+  }
+  return uses;
+}
+
+let currentUses: FloorMatComponentUses | null = null;
+
+export function setFloorMatComponentUses(uses: FloorMatComponentUses | null): void {
+  currentUses = uses;
+}
+
+/** True when more than one master lists `sku` in that position. */
+export function isSharedFloorMatComponent(sku: string | null | undefined, piece: "front" | "rear"): boolean {
+  return Boolean(sku && (currentUses?.[piece].get(sku) ?? 0) > 1);
+}
+
 export function floorMatTotalStock(sku: string): number | null {
   return currentView?.totalStockBySku.get(sku) ?? null;
 }

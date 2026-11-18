@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   buildFloorMatView,
   componentPairingLines,
+  countFloorMatComponentUses,
+  isSharedFloorMatComponent,
+  setFloorMatComponentUses,
   floorMatMaster,
   floorMatTotalStock,
   looseSetsOrdered,
@@ -45,7 +48,49 @@ const FM14230_ROWS = [
   row({ sku: "T2-F533", ttm_available_stock: 4, ttm_jeff_available_stock: 2, total_stock: 6 }),
 ];
 
-afterEach(() => setFloorMatView(null));
+afterEach(() => {
+  setFloorMatView(null);
+  setFloorMatComponentUses(null);
+});
+
+describe("shared components", () => {
+  const rows = [
+    row({ sku: "FM15069", fm_set: set("T1-CH-S117", "T2-A") }),
+    row({ sku: "FM15047", fm_set: set("T1-CH-S117", "T2-B") }),
+    row({ sku: "FM14073", fm_set: set("T1-CH-S117", "T2-B") }),
+    row({ sku: "FM10191", fm_set: set("C1-AU-A805", null) }),
+    row({ sku: "FM20000", fm_set: set("T2-A", "C1-AU-A805") }),
+    row({ sku: "T1-CH-S117" }),
+  ];
+
+  it("is false until the counts are set", () => {
+    expect(isSharedFloorMatComponent("T1-CH-S117", "front")).toBe(false);
+  });
+
+  it("flags a Front or Rear SKU that more than one master lists", () => {
+    setFloorMatComponentUses(countFloorMatComponentUses(rows));
+    expect(isSharedFloorMatComponent("T1-CH-S117", "front")).toBe(true); // three masters
+    expect(isSharedFloorMatComponent("T2-B", "rear")).toBe(true); // two masters
+    expect(isSharedFloorMatComponent("T2-A", "rear")).toBe(false); // one master as Rear
+    expect(isSharedFloorMatComponent(null, "rear")).toBe(false);
+  });
+
+  it("counts the Front and Rear columns separately, as the sheet does", () => {
+    setFloorMatComponentUses(countFloorMatComponentUses(rows));
+    // C1-AU-A805 is one master's Front and another's Rear: once in each column.
+    expect(isSharedFloorMatComponent("C1-AU-A805", "front")).toBe(false);
+    expect(isSharedFloorMatComponent("C1-AU-A805", "rear")).toBe(false);
+    expect(isSharedFloorMatComponent("T2-A", "front")).toBe(false);
+  });
+
+  it("ignores pinned rows, which repeat a master", () => {
+    const uses = countFloorMatComponentUses([
+      row({ sku: "M", fm_set: set("F", "R") }),
+      row({ sku: "M", fm_set: set("F", "R"), pinned: true }),
+    ]);
+    expect(uses.front.get("F")).toBe(1);
+  });
+});
 
 describe("buildFloorMatView", () => {
   it("returns null when no row has set links", () => {
