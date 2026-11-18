@@ -500,7 +500,7 @@ export function MinSalesPage() {
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
             {pick("SKU 등록 (최소값, 참조, 또는 둘 다)", "Register a SKU (minimum, reference, or both)")}
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_120px_minmax(200px,1fr)_90px_minmax(140px,1fr)_auto]">
+          <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_170px_minmax(200px,1fr)_90px_minmax(140px,1fr)_auto]">
             <div>
               <SkuOptionPicker value={selectedSku} onChange={selectSku} disabled={saving} />
               {selectedSku ? (
