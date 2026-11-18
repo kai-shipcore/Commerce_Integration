@@ -163,6 +163,17 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
 }
 
+// Sales on this row are the higher of its own and a share of another SKU's
+// (see sales_reference_sku). Without the marker a new colour showing sales it
+// never made looks like a sync error against Velocity.
+function salesReferenceMark(row: DemandRow): string {
+  const reference = row.sales_reference_sku;
+  if (!reference) return "";
+  const pct = `${Number((row.sales_reference_pct ?? 0).toFixed(2))}%`;
+  const title = `Sales are the higher of this SKU's own and ${pct} of ${reference}`;
+  return `<span class="sales-reference-mark" title="${escapeHtml(title)}">${pct}</span>`;
+}
+
 // Registered on the Replacing Soon page: the auto-fill calculations stock this
 // SKU only up to the registered inventory life, so its order looks small.
 function replacingSoonMark(row: DemandRow): string {
@@ -244,7 +255,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "floor_mat_type", grp: "fix", label: "Floor Mat\nType", w: 86, align: "ctr", tint: "", gh: "gh-fix", val: (r) => r.floor_mat_type ?? "", sortVal: (r) => r.floor_mat_type ?? "" },
-  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
+  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${salesReferenceMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
   { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
   { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },

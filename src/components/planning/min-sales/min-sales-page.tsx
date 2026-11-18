@@ -7,11 +7,16 @@ import { toast } from "sonner";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
+import { ColorRulesPanel } from "./color-rules-panel";
 import { SkuOptionPicker, type SkuOption } from "./sku-option-picker";
 
 type MinSalesRow = {
   masterSku: string;
-  minTotalAvgCurr: number;
+  /** Fixed floor on T.Avg current; null when the SKU only has a reference. */
+  minTotalAvgCurr: number | null;
+  /** SKU whose sales this one is planned on, with the percent applied; null when it only has a floor. */
+  referenceSku: string | null;
+  referencePct: number | null;
   note: string | null;
   productName: string | null;
   categoryCode: string | null;
@@ -21,10 +26,21 @@ type MinSalesRow = {
   updatedAt: string;
 };
 
-type MinSalesStatus = "override" | "applied" | "calculated";
-type SortColumn = "masterSku" | "productName" | "calculated" | "minimum" | "status" | "updatedAt";
+type MinSalesStatus = "override" | "applied" | "calculated" | "reference";
+type SortColumn = "masterSku" | "productName" | "calculated" | "minimum" | "reference" | "status" | "updatedAt";
 type SortDirection = "asc" | "desc";
-type SaveRow = { masterSku: string; minTotalAvgCurr: number; note: string | null };
+type SaveRow = {
+  masterSku: string;
+  minTotalAvgCurr: number | null;
+  referenceSku: string | null;
+  referencePct: number | null;
+  note: string | null;
+};
+type RuleForm = { minimum: string; referencePct: string; note: string };
+type PageTab = "sku" | "color";
+
+const EMPTY_FORM: RuleForm = { minimum: "", referencePct: "", note: "" };
+const DEFAULT_REFERENCE_PCT = "30";
 
 /**
  * Mirrors DemandPlanningService: a manual T.Avg override wins, otherwise the
@@ -33,18 +49,22 @@ type SaveRow = { masterSku: string; minTotalAvgCurr: number; note: string | null
  * number the dashboard recomputes at read time.
  */
 function statusOf(row: MinSalesRow): MinSalesStatus {
+  // No fixed floor: the row only names a reference, which changes the sales
+  // columns on the dashboard rather than T.Avg current directly.
+  if (row.minTotalAvgCurr === null) return "reference";
   if (row.totalAvgCurrOverride !== null) return "override";
   if (row.calculatedTotalAvgCurr === null || row.calculatedTotalAvgCurr < row.minTotalAvgCurr) return "applied";
   return "calculated";
 }
 
-const STATUS_ORDER: Record<MinSalesStatus, number> = { applied: 0, override: 1, calculated: 2 };
+const STATUS_ORDER: Record<MinSalesStatus, number> = { applied: 0, override: 1, calculated: 2, reference: 3 };
 
 function sortValue(row: MinSalesRow, column: SortColumn): string | number {
   switch (column) {
     case "productName": return row.productName ?? "";
     case "calculated": return row.calculatedTotalAvgCurr ?? -1;
-    case "minimum": return row.minTotalAvgCurr;
+    case "minimum": return row.minTotalAvgCurr ?? -1;
+    case "reference": return row.referenceSku ?? "";
     case "status": return STATUS_ORDER[statusOf(row)];
     case "updatedAt": return row.updatedAt;
     default: return row.masterSku;
@@ -71,13 +91,42 @@ function parseMinimum(raw: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** A percent above 0 and at most 1000; "30%" and 30 both read as 30. */
+function parsePct(raw: string): number | null {
+  const text = raw.trim().replace(/%$/, "").trim();
+  if (text === "") return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value > 0 && value <= 1000 ? value : null;
+}
+
+function formatPct(value: number | null): string {
+  return value === null ? "" : `${Number(value.toFixed(2))}%`;
+}
+
+/**
+ * The row to save from a minimum / reference form, or null when the form is
+ * not a valid rule: it needs a minimum, a reference SKU with a percent, or both,
+ * and nothing typed may be unreadable.
+ */
+function buildSaveRow(masterSku: string, form: RuleForm, referenceSku: string | null): SaveRow | null {
+  const minimum = parseMinimum(form.minimum);
+  if (form.minimum.trim() !== "" && minimum === null) return null;
+  const reference = referenceSku?.trim().toUpperCase() || null;
+  const pct = reference ? parsePct(form.referencePct) : null;
+  if (reference && (pct === null || reference === masterSku)) return null;
+  if (!masterSku || (minimum === null && reference === null)) return null;
+  return { masterSku, minTotalAvgCurr: minimum, referenceSku: reference, referencePct: pct, note: form.note.trim() || null };
+}
+
 function normalizeHeader(value: unknown) {
-  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return String(value ?? "").trim().toLowerCase().replace(/%/g, "pct").replace(/[^a-z0-9]+/g, "");
 }
 
 const SKU_HEADERS = ["sku", "mastersku"];
 const MIN_HEADERS = ["mintavg", "mintavgcurrent", "mintotalavgcurr", "minimum", "min", "minsales"];
 const NOTE_HEADERS = ["note", "memo"];
+const REFERENCE_SKU_HEADERS = ["referencesku", "refsku", "reference"];
+const REFERENCE_PCT_HEADERS = ["referencepct", "referencepercent", "refpct", "pct", "percent"];
 
 function readWorkbook(workbook: XLSX.WorkBook): SaveRow[] {
   const result: SaveRow[] = [];
@@ -87,19 +136,28 @@ function readWorkbook(workbook: XLSX.WorkBook): SaveRow[] {
     });
     const headerIndex = rows.findIndex((row) => {
       const headers = row.map(normalizeHeader);
-      return headers.some((h) => SKU_HEADERS.includes(h)) && headers.some((h) => MIN_HEADERS.includes(h));
+      return headers.some((h) => SKU_HEADERS.includes(h))
+        && (headers.some((h) => MIN_HEADERS.includes(h)) || headers.some((h) => REFERENCE_SKU_HEADERS.includes(h)));
     });
     if (headerIndex < 0) continue;
     const headers = rows[headerIndex].map(normalizeHeader);
     const skuIndex = headers.findIndex((h) => SKU_HEADERS.includes(h));
     const minIndex = headers.findIndex((h) => MIN_HEADERS.includes(h));
     const noteIndex = headers.findIndex((h) => NOTE_HEADERS.includes(h));
+    const referenceSkuIndex = headers.findIndex((h) => REFERENCE_SKU_HEADERS.includes(h));
+    const referencePctIndex = headers.findIndex((h) => REFERENCE_PCT_HEADERS.includes(h));
+    const cell = (row: unknown[], index: number) => (index >= 0 ? String(row[index] ?? "").trim() : "");
     for (const row of rows.slice(headerIndex + 1)) {
-      const masterSku = String(row[skuIndex] ?? "").trim().toUpperCase();
-      const minimum = parseMinimum(String(row[minIndex] ?? ""));
-      if (!masterSku || minimum === null) continue;
-      const note = noteIndex >= 0 ? String(row[noteIndex] ?? "").trim() : "";
-      result.push({ masterSku, minTotalAvgCurr: minimum, note: note || null });
+      const masterSku = cell(row, skuIndex).toUpperCase();
+      // A percent typed as an Excel percentage arrives as a fraction (30% -> 0.3).
+      const rawPct = referencePctIndex >= 0 ? row[referencePctIndex] : "";
+      const pctText = typeof rawPct === "number" && rawPct > 0 && rawPct <= 1 ? String(rawPct * 100) : String(rawPct ?? "");
+      const saveRow = buildSaveRow(
+        masterSku,
+        { minimum: cell(row, minIndex), referencePct: pctText, note: cell(row, noteIndex) },
+        cell(row, referenceSkuIndex) || null,
+      );
+      if (saveRow) result.push(saveRow);
     }
   }
   return result;
@@ -118,10 +176,12 @@ export function MinSalesPage() {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<MinSalesStatus | "all">("all");
-  const [form, setForm] = useState({ minimum: "", note: "" });
+  const [tab, setTab] = useState<PageTab>("sku");
+  const [form, setForm] = useState<RuleForm>({ ...EMPTY_FORM, referencePct: DEFAULT_REFERENCE_PCT });
   const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
+  const [referenceOption, setReferenceOption] = useState<SkuOption | null>(null);
   const [editingSku, setEditingSku] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ minimum: "", note: "" });
+  const [editForm, setEditForm] = useState<RuleForm & { referenceSku: string }>({ ...EMPTY_FORM, referenceSku: "" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortColumn, setSortColumn] = useState<SortColumn>("masterSku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -152,7 +212,7 @@ export function MinSalesPage() {
   }, []);
 
   const counts = useMemo(() => {
-    const result = { total: rows.length, applied: 0, override: 0, calculated: 0 };
+    const result = { total: rows.length, applied: 0, override: 0, calculated: 0, reference: 0 };
     for (const row of rows) result[statusOf(row)] += 1;
     return result;
   }, [rows]);
@@ -161,7 +221,7 @@ export function MinSalesPage() {
     const needle = query.trim().toLowerCase();
     const filtered = rows.filter((row) =>
       (statusFilter === "all" || statusOf(row) === statusFilter) &&
-      (!needle || `${row.masterSku} ${row.productName ?? ""} ${row.note ?? ""}`.toLowerCase().includes(needle))
+      (!needle || `${row.masterSku} ${row.productName ?? ""} ${row.referenceSku ?? ""} ${row.note ?? ""}`.toLowerCase().includes(needle))
     );
     const direction = sortDirection === "asc" ? 1 : -1;
     return filtered.sort((a, b) => {
@@ -201,24 +261,38 @@ export function MinSalesPage() {
     setMessage("");
     // Editing an existing registration starts from its current values.
     const existing = option ? rows.find((row) => row.masterSku === option.masterSku) : undefined;
-    if (existing) setForm({ minimum: String(existing.minTotalAvgCurr), note: existing.note ?? "" });
+    if (!existing) return;
+    setForm({
+      minimum: existing.minTotalAvgCurr === null ? "" : String(existing.minTotalAvgCurr),
+      referencePct: existing.referencePct === null ? DEFAULT_REFERENCE_PCT : String(existing.referencePct),
+      note: existing.note ?? "",
+    });
+    setReferenceOption(existing.referenceSku
+      ? { masterSku: existing.referenceSku, productName: null, calculatedTotalAvgCurr: null, registeredMin: null }
+      : null);
   }
+
+  const invalidRule = pick(
+    "최소값(0 이상) 또는 참조 SKU와 %(0 초과, 1000 이하)를 입력하세요. 참조 SKU는 자기 자신일 수 없습니다.",
+    "Enter a minimum (0 or more), or a reference SKU with a percent (above 0, up to 1000). A SKU cannot reference itself.",
+  );
 
   async function register() {
     if (!canEdit) { toast.error(noPermission); return; }
     const masterSku = selectedSku?.masterSku ?? "";
-    const minimum = parseMinimum(form.minimum);
-    if (!masterSku || minimum === null) {
-      setMessage(pick("SKU를 선택하고 0 이상의 최소값을 입력하세요.", "Select a SKU and enter a minimum of 0 or more."));
+    const saveRow = buildSaveRow(masterSku, form, referenceOption?.masterSku ?? null);
+    if (!saveRow) {
+      setMessage(masterSku ? invalidRule : pick("SKU를 선택하세요.", "Select a SKU."));
       return;
     }
     setSaving(true);
     setMessage("");
     try {
-      await postRows([{ masterSku, minTotalAvgCurr: minimum, note: form.note.trim() || null }]);
-      setForm({ minimum: "", note: "" });
+      await postRows([saveRow]);
+      setForm({ ...EMPTY_FORM, referencePct: DEFAULT_REFERENCE_PCT });
       setSelectedSku(null);
-      toast.success(pick(`${masterSku} 최소값을 저장했습니다.`, `Saved minimum for ${masterSku}.`));
+      setReferenceOption(null);
+      toast.success(pick(`${masterSku} 설정을 저장했습니다.`, `Saved ${masterSku}.`));
       await loadRows();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : saveFailed);
@@ -229,20 +303,26 @@ export function MinSalesPage() {
 
   function beginEdit(row: MinSalesRow) {
     setEditingSku(row.masterSku);
-    setEditForm({ minimum: String(row.minTotalAvgCurr), note: row.note ?? "" });
+    setEditForm({
+      minimum: row.minTotalAvgCurr === null ? "" : String(row.minTotalAvgCurr),
+      referenceSku: row.referenceSku ?? "",
+      referencePct: row.referencePct === null ? "" : String(row.referencePct),
+      note: row.note ?? "",
+    });
     setMessage("");
   }
 
   async function saveEdit(row: MinSalesRow) {
     if (!canEdit) { toast.error(noPermission); return; }
-    const minimum = parseMinimum(editForm.minimum);
-    if (minimum === null) {
-      setMessage(pick("0 이상의 최소값을 입력하세요.", "Enter a minimum of 0 or more."));
+    const saveRow = buildSaveRow(row.masterSku, editForm, editForm.referenceSku || null);
+    if (!saveRow) {
+      setMessage(invalidRule);
       return;
     }
     setSaving(true);
+    setMessage("");
     try {
-      await postRows([{ masterSku: row.masterSku, minTotalAvgCurr: minimum, note: editForm.note.trim() || null }]);
+      await postRows([saveRow]);
       setEditingSku(null);
       await loadRows();
     } catch (error) {
@@ -257,10 +337,10 @@ export function MinSalesPage() {
     if (skus.length === 0) return;
     const confirmText = skus.length === 1
       ? pick(
-          `${skus[0]} 최소값 등록을 삭제할까요? Demand Planning에는 계산값이 다시 표시됩니다.`,
-          `Remove the minimum for ${skus[0]}? Demand Planning will show the calculated value again.`,
+          `${skus[0]} 등록을 삭제할까요? Demand Planning에는 계산값이 다시 표시됩니다.`,
+          `Remove the registration for ${skus[0]}? Demand Planning will show the calculated value again.`,
         )
-      : pick(`선택한 ${skus.length}개 SKU의 최소값 등록을 삭제할까요?`, `Remove the minimum for ${skus.length} selected SKUs?`);
+      : pick(`선택한 ${skus.length}개 SKU의 등록을 삭제할까요?`, `Remove the registration for ${skus.length} selected SKUs?`);
     if (!window.confirm(confirmText)) return;
     setSaving(true);
     setMessage("");
@@ -286,7 +366,10 @@ export function MinSalesPage() {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const importRows = readWorkbook(workbook);
       if (importRows.length === 0) {
-        throw new Error(pick("엑셀에서 SKU / Min T.Avg 행을 찾지 못했습니다.", "No SKU / Min T.Avg rows were found in the Excel file."));
+        throw new Error(pick(
+          "엑셀에서 SKU와 Min T.Avg 또는 Reference SKU / Reference % 행을 찾지 못했습니다.",
+          "No rows with a SKU and a Min T.Avg or a Reference SKU / Reference % were found in the Excel file.",
+        ));
       }
       const result = await postRows(importRows);
       setMessage(pick(
@@ -304,8 +387,9 @@ export function MinSalesPage() {
 
   function downloadTemplate() {
     const sheet = XLSX.utils.aoa_to_sheet([
-      ["SKU", "Min T.Avg", "Note"],
-      ["CA-SC-10-F-10-BK-1TO", 3, "Launch floor"],
+      ["SKU", "Min T.Avg", "Reference SKU", "Reference %", "Note"],
+      ["CA-SC-10-F-10-BK-1TO", 3, "", "", "Fixed minimum only"],
+      ["CA-SC-10-F-99-IB-1TO", "", "CA-SC-10-F-99-BE-1TO", 30, "Reference only"],
     ]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Min Sales");
@@ -314,9 +398,10 @@ export function MinSalesPage() {
 
   function exportRows() {
     const sheet = XLSX.utils.aoa_to_sheet([
-      ["SKU", "Product", "Calculated T.Avg", "Min T.Avg", "Note", "Updated By", "Updated At"],
+      ["SKU", "Product", "Calculated T.Avg", "Min T.Avg", "Reference SKU", "Reference %", "Note", "Updated By", "Updated At"],
       ...visibleRows.map((row) => [
-        row.masterSku, row.productName ?? "", row.calculatedTotalAvgCurr ?? "", row.minTotalAvgCurr,
+        row.masterSku, row.productName ?? "", row.calculatedTotalAvgCurr ?? "", row.minTotalAvgCurr ?? "",
+        row.referenceSku ?? "", row.referencePct ?? "",
         row.note ?? "", row.updatedBy ?? "", formatDate(row.updatedAt),
       ]),
     ]);
@@ -329,9 +414,12 @@ export function MinSalesPage() {
     ? pick("최소값 적용", "Min applied")
     : status === "override"
       ? pick("수동값 우선", "Manual override")
-      : pick("계산값 사용", "Calculated");
+      : status === "reference"
+        ? pick("참조만", "Reference only")
+        : pick("계산값 사용", "Calculated");
 
-  const gridCols = "grid-cols-[28px_44px_minmax(190px,1.2fr)_minmax(160px,1fr)_90px_90px_110px_minmax(140px,1fr)_140px_110px]";
+  const gridCols = "grid-cols-[28px_44px_minmax(190px,1.2fr)_minmax(140px,1fr)_90px_90px_minmax(210px,1.2fr)_110px_minmax(120px,1fr)_140px_110px]";
+  const tableMinWidth = "min-w-[1320px]";
 
   return (
     <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-sm">
@@ -342,13 +430,13 @@ export function MinSalesPage() {
             <h1 className="text-lg font-semibold">{pick("SKU 최소 판매량", "SKU Minimum Sales")}</h1>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
               {pick(
-                "등록한 SKU의 T.Avg 현재가 최소값보다 낮으면 Demand Planning에서 최소값으로 표시되고 계획에 사용됩니다. 수동으로 입력한 T.Avg 값이 있으면 그 값이 우선합니다.",
-                "When a registered SKU's T.Avg current falls below its minimum, Demand Planning shows and plans with the minimum instead. A manually entered T.Avg value still takes priority.",
+                "최소값: SKU의 T.Avg 현재가 최소값보다 낮으면 Demand Planning에서 최소값으로 계획합니다(수동 입력 T.Avg가 있으면 그 값이 우선). 참조: 각 세일즈 구간을 자체 실적과 참조 SKU 실적 × % 중 큰 값으로 잡습니다. 참조 SKU의 실적은 차감하지 않습니다.",
+                "Minimum: when a SKU's T.Avg current falls below it, Demand Planning plans with the minimum (a manually entered T.Avg still wins). Reference: each sales window is the higher of the SKU's own sales and the reference SKU's sales × %. The reference SKU's sales are not reduced.",
               )}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${tab === "sku" ? "" : "hidden"}`}>
           <input
             className="form-input h-9 w-60 bg-white text-sm"
             placeholder={pick("SKU / 제품명 / 메모 검색...", "Search SKU / product / note...")}
@@ -391,19 +479,28 @@ export function MinSalesPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-4 border-b border-[#e2dfd8] bg-[#f8f7f4]">
+      <div className="flex border-b border-[#e2dfd8] px-4" role="tablist">
+        <TabButton label={pick("SKU별 설정", "Per SKU")} active={tab === "sku"} onClick={() => setTab("sku")} />
+        <TabButton label={pick("색상 규칙", "Colour rules")} active={tab === "color"} onClick={() => setTab("color")} />
+      </div>
+
+      {tab === "color" ? <ColorRulesPanel canEdit={canEdit} canDelete={canDelete} /> : null}
+
+      <div className={tab === "sku" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+      <div className="grid grid-cols-5 border-b border-[#e2dfd8] bg-[#f8f7f4]">
         <StatButton label={pick("등록 SKU", "Registered SKUs")} value={counts.total} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <StatButton label={statusLabel("applied")} value={counts.applied} tone="applied" active={statusFilter === "applied"} onClick={() => setStatusFilter("applied")} />
         <StatButton label={statusLabel("calculated")} value={counts.calculated} active={statusFilter === "calculated"} onClick={() => setStatusFilter("calculated")} />
         <StatButton label={statusLabel("override")} value={counts.override} tone="override" active={statusFilter === "override"} onClick={() => setStatusFilter("override")} />
+        <StatButton label={statusLabel("reference")} value={counts.reference} active={statusFilter === "reference"} onClick={() => setStatusFilter("reference")} />
       </div>
 
       {canEdit ? (
         <div className="border-b border-[#e2dfd8] bg-[#f8f7f4] px-5 py-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-            {pick("최소값 등록", "Register Minimum")}
+            {pick("SKU 등록 (최소값, 참조, 또는 둘 다)", "Register a SKU (minimum, reference, or both)")}
           </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_130px_minmax(160px,1fr)_auto]">
+          <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_120px_minmax(200px,1fr)_90px_minmax(140px,1fr)_auto]">
             <div>
               <SkuOptionPicker value={selectedSku} onChange={selectSku} disabled={saving} />
               {selectedSku ? (
@@ -428,6 +525,36 @@ export function MinSalesPage() {
               onChange={(event) => setForm((f) => ({ ...f, minimum: event.target.value }))}
               onKeyDown={(event) => { if (event.key === "Enter") void register(); }}
             />
+            <div>
+              <SkuOptionPicker
+                value={referenceOption}
+                onChange={setReferenceOption}
+                disabled={saving}
+                listId="min-sales-reference-sku-list"
+                placeholder={pick("참조 SKU (선택)", "Reference SKU (optional)")}
+              />
+              {referenceOption && parsePct(form.referencePct) !== null ? (
+                <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                  {pick(
+                    `세일즈 = 자체 실적과 ${referenceOption.masterSku} × ${formatPct(parsePct(form.referencePct))} 중 큰 값`,
+                    `Sales = the higher of own and ${referenceOption.masterSku} × ${formatPct(parsePct(form.referencePct))}`,
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <input
+              className="form-input h-8 w-full bg-white text-right text-xs"
+              type="number"
+              step="any"
+              min="0"
+              max="1000"
+              aria-label={pick("참조 %", "Reference %")}
+              placeholder="%"
+              disabled={!referenceOption}
+              value={form.referencePct}
+              onChange={(event) => setForm((f) => ({ ...f, referencePct: event.target.value }))}
+              onKeyDown={(event) => { if (event.key === "Enter") void register(); }}
+            />
             <input
               className="form-input h-8 w-full bg-white text-xs"
               placeholder={pick("메모 (선택)", "Note (optional)")}
@@ -445,7 +572,7 @@ export function MinSalesPage() {
       {message ? <div className="border-b border-[#e2dfd8] px-6 py-2 text-xs text-[#8a5300]">{message}</div> : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
-        <div className={`grid ${gridCols} min-w-[1100px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground`}>
+        <div className={`grid ${gridCols} ${tableMinWidth} bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground`}>
           <input
             type="checkbox"
             aria-label={pick("전체 선택", "Select all")}
@@ -458,6 +585,7 @@ export function MinSalesPage() {
           <SortHeader label={pick("제품명", "Product")} column="productName" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <SortHeader label={pick("계산값", "Calculated")} column="calculated" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} align="right" />
           <SortHeader label={pick("최소값", "Minimum")} column="minimum" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} align="right" />
+          <SortHeader label={pick("참조 SKU × %", "Reference SKU × %")} column="reference" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <SortHeader label={pick("상태", "Status")} column="status" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <span>{pick("메모", "Note")}</span>
           <SortHeader label={pick("수정", "Updated")} column="updatedAt" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
@@ -476,7 +604,7 @@ export function MinSalesPage() {
             const status = statusOf(row);
             const editing = editingSku === row.masterSku;
             return (
-              <div key={row.masterSku} className={`grid ${gridCols} min-w-[1100px] items-center border-b border-[#e2dfd8] px-3 py-2 text-sm`}>
+              <div key={row.masterSku} className={`grid ${gridCols} ${tableMinWidth} items-center border-b border-[#e2dfd8] px-3 py-2 text-sm`}>
                 <input
                   type="checkbox"
                   aria-label={pick(`${row.masterSku} 선택`, `Select ${row.masterSku}`)}
@@ -514,6 +642,43 @@ export function MinSalesPage() {
                   />
                 ) : (
                   <span className="pr-3 text-right font-mono text-xs font-semibold">{formatAvg(row.minTotalAvgCurr)}</span>
+                )}
+                {editing ? (
+                  <span className="flex gap-1 pr-2">
+                    <input
+                      className="form-input h-8 min-w-0 flex-1 bg-white font-mono text-xs"
+                      aria-label={pick("참조 SKU", "Reference SKU")}
+                      placeholder={pick("참조 SKU", "Reference SKU")}
+                      value={editForm.referenceSku}
+                      onChange={(event) => setEditForm((f) => ({ ...f, referenceSku: event.target.value }))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void saveEdit(row);
+                        if (event.key === "Escape") setEditingSku(null);
+                      }}
+                    />
+                    <input
+                      className="form-input h-8 w-16 bg-white text-right text-xs"
+                      type="number"
+                      step="any"
+                      min="0"
+                      max="1000"
+                      aria-label={pick("참조 %", "Reference %")}
+                      placeholder="%"
+                      value={editForm.referencePct}
+                      onChange={(event) => setEditForm((f) => ({ ...f, referencePct: event.target.value }))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void saveEdit(row);
+                        if (event.key === "Escape") setEditingSku(null);
+                      }}
+                    />
+                  </span>
+                ) : row.referenceSku ? (
+                  <span className="flex min-w-0 items-baseline gap-1.5 pr-2 font-mono text-xs" title={`${row.referenceSku} × ${formatPct(row.referencePct)}`}>
+                    <span className="truncate">{row.referenceSku}</span>
+                    <span className="shrink-0 font-semibold">× {formatPct(row.referencePct)}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">-</span>
                 )}
                 <span>
                   <StatusBadge
@@ -559,7 +724,22 @@ export function MinSalesPage() {
           })
         )}
       </div>
+      </div>
     </section>
+  );
+}
+
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`px-4 py-2.5 text-sm font-semibold ${active ? "text-[#1a5cdb] shadow-[inset_0_-2px_0_#1a5cdb]" : "text-muted-foreground hover:text-foreground"}`}
+    >
+      {label}
+    </button>
   );
 }
 

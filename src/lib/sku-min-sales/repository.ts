@@ -1,7 +1,11 @@
 /**
- * Pure data access for per-SKU minimum sales (shipcore.fc_sku_min_sales),
- * the floor applied to the Demand Planning "T.Avg 현재" column. Raw SQL only:
- * no Prisma model exists for this table or for fc_products.
+ * Pure data access for the Min Sales page. Raw SQL only: no Prisma model
+ * exists for these tables or for fc_products.
+ *  - shipcore.fc_sku_min_sales: per-SKU registrations, each a fixed floor on
+ *    the Demand Planning "T.Avg 현재" column, a reference SKU and percent its
+ *    sales are planned on, or both.
+ *  - shipcore.fc_sales_reference_color_rules: colour rules, the same
+ *    reference for every SKU of one colour.
  *
  * Methods accept an optional `executor` (defaults to the shared pool) so the
  * Service can run several calls in one transaction via `withTransaction()`.
@@ -9,6 +13,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import type { ColorRuleCategory } from "@/lib/planning/reference-sales";
 
 export type SqlExecutor = Pick<Pool, "query">;
 
@@ -33,7 +38,12 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
 
 export interface SkuMinSalesRow {
   masterSku: string;
-  minTotalAvgCurr: number;
+  /** Fixed floor on T.Avg current, or null when the SKU only has a reference. */
+  minTotalAvgCurr: number | null;
+  /** SKU whose sales this one is planned on, or null when it only has a floor. */
+  referenceSku: string | null;
+  /** Percent of the reference SKU's sales (30 = 30%); set together with referenceSku. */
+  referencePct: number | null;
   note: string | null;
   productName: string | null;
   categoryCode: string | null;
@@ -51,7 +61,9 @@ export interface SkuMinSalesRow {
 
 export interface SkuMinSalesWrite {
   masterSku: string;
-  minTotalAvgCurr: number;
+  minTotalAvgCurr: number | null;
+  referenceSku: string | null;
+  referencePct: number | null;
   note: string | null;
 }
 
@@ -63,30 +75,82 @@ export interface SkuOption {
   registeredMin: number | null;
 }
 
+export interface ExistingSkuMinSales {
+  masterSku: string;
+  minTotalAvgCurr: number | null;
+  referenceSku: string | null;
+  referencePct: number | null;
+  note: string | null;
+}
+
+export interface ColorRuleRow {
+  id: number;
+  categoryCode: ColorRuleCategory;
+  /** Fabric / material the rule is limited to, or null for every one. */
+  material: string | null;
+  color: string;
+  referenceColor: string;
+  referencePct: number;
+  note: string | null;
+  updatedBy: string | null;
+  updatedAt: string;
+}
+
+export interface ColorRuleWrite {
+  categoryCode: ColorRuleCategory;
+  material: string | null;
+  color: string;
+  referenceColor: string;
+  referencePct: number;
+  note: string | null;
+}
+
 /** Escapes LIKE wildcards so a typed "_" or "%" matches literally. */
 function likePattern(search: string): string {
   return `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
 
-export interface ExistingSkuMinSales {
-  masterSku: string;
-  minTotalAvgCurr: number;
-  note: string | null;
+function numberOrNull(value: unknown): number | null {
+  return value == null ? null : Number(value);
+}
+
+function isoDate(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
 
 function mapRow(row: Record<string, unknown>): SkuMinSalesRow {
   return {
     masterSku: row.master_sku as string,
-    minTotalAvgCurr: Number(row.min_total_avg_curr),
+    minTotalAvgCurr: numberOrNull(row.min_total_avg_curr),
+    referenceSku: (row.reference_sku as string | null) ?? null,
+    referencePct: numberOrNull(row.reference_pct),
     note: (row.note as string | null) ?? null,
     productName: (row.product_name as string | null) ?? null,
     categoryCode: (row.category_code as string | null) ?? null,
-    calculatedTotalAvgCurr: row.calculated_total_avg_curr == null ? null : Number(row.calculated_total_avg_curr),
-    totalAvgCurrOverride: row.total_avg_curr_override == null ? null : Number(row.total_avg_curr_override),
+    calculatedTotalAvgCurr: numberOrNull(row.calculated_total_avg_curr),
+    totalAvgCurrOverride: numberOrNull(row.total_avg_curr_override),
     updatedBy: (row.updated_by as string | null) ?? null,
-    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+    updatedAt: isoDate(row.updated_at),
   };
 }
+
+function mapColorRule(row: Record<string, unknown>): ColorRuleRow {
+  return {
+    id: Number(row.id),
+    categoryCode: row.category_code as ColorRuleCategory,
+    // Stored as '' for "every fabric / material" so the unique key covers it.
+    material: (row.material as string) || null,
+    color: row.color as string,
+    referenceColor: row.reference_color as string,
+    referencePct: Number(row.reference_pct),
+    note: (row.note as string | null) ?? null,
+    updatedBy: (row.updated_by as string | null) ?? null,
+    updatedAt: isoDate(row.updated_at),
+  };
+}
+
+const COLOR_RULE_COLUMNS = `id, category_code, material, color, reference_color,
+         reference_pct::float8 AS reference_pct, note, updated_by, updated_at`;
 
 export const SkuMinSalesRepository = {
   async list(): Promise<SkuMinSalesRow[]> {
@@ -94,6 +158,8 @@ export const SkuMinSalesRepository = {
       `SELECT
          m.master_sku,
          m.min_total_avg_curr::float8                                AS min_total_avg_curr,
+         m.reference_sku,
+         m.reference_pct::float8                                     AS reference_pct,
          m.note,
          p.product_name,
          p.category_code,
@@ -135,8 +201,8 @@ export const SkuMinSalesRepository = {
       options: result.rows.map((row) => ({
         masterSku: row.master_sku as string,
         productName: (row.product_name as string | null) ?? null,
-        calculatedTotalAvgCurr: row.calculated_total_avg_curr == null ? null : Number(row.calculated_total_avg_curr),
-        registeredMin: row.registered_min == null ? null : Number(row.registered_min),
+        calculatedTotalAvgCurr: numberOrNull(row.calculated_total_avg_curr),
+        registeredMin: numberOrNull(row.registered_min),
       })),
       total: Number(result.rows[0]?.total ?? 0),
     };
@@ -151,29 +217,47 @@ export const SkuMinSalesRepository = {
   },
 
   async getForUpdate(masterSku: string, executor: SqlExecutor = pool()): Promise<ExistingSkuMinSales | null> {
-    const result = await executor.query<{ master_sku: string; min_total_avg_curr: number; note: string | null }>(
-      `SELECT master_sku, min_total_avg_curr::float8 AS min_total_avg_curr, note
+    const result = await executor.query<{
+      master_sku: string;
+      min_total_avg_curr: number | null;
+      reference_sku: string | null;
+      reference_pct: number | null;
+      note: string | null;
+    }>(
+      `SELECT master_sku, min_total_avg_curr::float8 AS min_total_avg_curr,
+              reference_sku, reference_pct::float8 AS reference_pct, note
        FROM shipcore.fc_sku_min_sales
        WHERE master_sku = $1
        FOR UPDATE`,
       [masterSku],
     );
     const row = result.rows[0];
-    return row ? { masterSku: row.master_sku, minTotalAvgCurr: Number(row.min_total_avg_curr), note: row.note } : null;
+    return row
+      ? {
+          masterSku: row.master_sku,
+          minTotalAvgCurr: numberOrNull(row.min_total_avg_curr),
+          referenceSku: row.reference_sku ?? null,
+          referencePct: numberOrNull(row.reference_pct),
+          note: row.note,
+        }
+      : null;
   },
 
   /** Insert, or overwrite the existing registration for the same SKU. Returns true when a new row was created. */
   async upsert(row: SkuMinSalesWrite, actor: string | null, executor: SqlExecutor = pool()): Promise<boolean> {
     const result = await executor.query<{ inserted: boolean }>(
-      `INSERT INTO shipcore.fc_sku_min_sales (master_sku, min_total_avg_curr, note, created_by, updated_by)
-       VALUES ($1, $2::numeric(14,4), $3, $4, $4)
+      `INSERT INTO shipcore.fc_sku_min_sales
+         (master_sku, min_total_avg_curr, reference_sku, reference_pct, note, created_by, updated_by)
+       VALUES ($1, $2::numeric(14,4), $3, $4::numeric(7,2), $5, $6, $6)
        ON CONFLICT (master_sku) DO UPDATE
          SET min_total_avg_curr = EXCLUDED.min_total_avg_curr,
+             reference_sku      = EXCLUDED.reference_sku,
+             reference_pct      = EXCLUDED.reference_pct,
              note               = EXCLUDED.note,
              updated_by         = EXCLUDED.updated_by,
              updated_at         = NOW()
        RETURNING (xmax = 0) AS inserted`,
-      [row.masterSku, row.minTotalAvgCurr, row.note, actor],
+      [row.masterSku, row.minTotalAvgCurr, row.referenceSku, row.referencePct, row.note, actor],
     );
     return Boolean(result.rows[0]?.inserted);
   },
@@ -182,6 +266,67 @@ export const SkuMinSalesRepository = {
     const result = await executor.query<{ master_sku: string }>(
       `DELETE FROM shipcore.fc_sku_min_sales WHERE master_sku = ANY($1::text[]) RETURNING master_sku`,
       [skus],
+    );
+    return result.rows.map((row) => row.master_sku);
+  },
+
+  async listColorRules(): Promise<ColorRuleRow[]> {
+    const result = await pool().query(
+      `SELECT ${COLOR_RULE_COLUMNS}
+       FROM shipcore.fc_sales_reference_color_rules
+       ORDER BY category_code, color, material`,
+    );
+    return result.rows.map(mapColorRule);
+  },
+
+  async getColorRuleForUpdate(
+    key: Pick<ColorRuleWrite, "categoryCode" | "material" | "color">,
+    executor: SqlExecutor = pool(),
+  ): Promise<ColorRuleRow | null> {
+    const result = await executor.query(
+      `SELECT ${COLOR_RULE_COLUMNS}
+       FROM shipcore.fc_sales_reference_color_rules
+       WHERE category_code = $1 AND material = $2 AND color = $3
+       FOR UPDATE`,
+      [key.categoryCode, key.material ?? "", key.color],
+    );
+    return result.rows[0] ? mapColorRule(result.rows[0]) : null;
+  },
+
+  /** Insert, or overwrite the rule for the same category / material / colour. */
+  async upsertColorRule(rule: ColorRuleWrite, actor: string | null, executor: SqlExecutor = pool()): Promise<ColorRuleRow> {
+    const result = await executor.query(
+      `INSERT INTO shipcore.fc_sales_reference_color_rules
+         (category_code, material, color, reference_color, reference_pct, note, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5::numeric(7,2), $6, $7, $7)
+       ON CONFLICT (category_code, material, color) DO UPDATE
+         SET reference_color = EXCLUDED.reference_color,
+             reference_pct   = EXCLUDED.reference_pct,
+             note            = EXCLUDED.note,
+             updated_by      = EXCLUDED.updated_by,
+             updated_at      = NOW()
+       RETURNING ${COLOR_RULE_COLUMNS}`,
+      [rule.categoryCode, rule.material ?? "", rule.color, rule.referenceColor, rule.referencePct, rule.note, actor],
+    );
+    return mapColorRule(result.rows[0]);
+  },
+
+  async deleteColorRule(id: number, executor: SqlExecutor = pool()): Promise<ColorRuleRow | null> {
+    const result = await executor.query(
+      `DELETE FROM shipcore.fc_sales_reference_color_rules WHERE id = $1 RETURNING ${COLOR_RULE_COLUMNS}`,
+      [id],
+    );
+    return result.rows[0] ? mapColorRule(result.rows[0]) : null;
+  },
+
+  /** Active Car Cover and Seat Cover master SKUs: the ones a colour rule can match or point at. */
+  async listActiveColorRuleSkus(): Promise<string[]> {
+    const result = await pool().query<{ master_sku: string }>(
+      `SELECT master_sku
+       FROM shipcore.fc_products
+       WHERE status = 'active'
+         AND (master_sku LIKE 'CC-%' OR master_sku LIKE 'CA-SC-%')
+       ORDER BY master_sku`,
     );
     return result.rows.map((row) => row.master_sku);
   },

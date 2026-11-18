@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const repositoryMock = {
   getContainerHeaders: vi.fn(),
   getStatsRows: vi.fn(),
+  getSalesReferenceColorRules: vi.fn(),
   getAvailableStockTotals: vi.fn(),
   getLastSync: vi.fn(),
   getSalesSyncedAt: vi.fn(),
@@ -71,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   repositoryMock.getContainerHeaders.mockResolvedValue([]);
   repositoryMock.getStatsRows.mockResolvedValue([]);
+  repositoryMock.getSalesReferenceColorRules.mockResolvedValue([]);
   repositoryMock.getAvailableStockTotals.mockResolvedValue([]);
   repositoryMock.getLastSync.mockResolvedValue(null);
   repositoryMock.getSalesSyncedAt.mockResolvedValue(null);
@@ -710,9 +712,15 @@ function ccStatsRow(sku: string, overrides: Record<string, unknown> = {}) {
 
 const rowBySku = <T extends { sku: string }>(rows: T[], sku: string): T => rows.find((r) => r.sku === sku)!;
 
-describe("DemandPlanningService.getDashboardData - Fabric 03 BK reference sales", () => {
+describe("DemandPlanningService.getDashboardData - colour rule reference sales", () => {
   const GR = "CC-TT-03-Y-GR-1TO";
   const BK = "CC-TT-03-Y-BK-1TO";
+
+  beforeEach(() => {
+    repositoryMock.getSalesReferenceColorRules.mockResolvedValue([
+      { categoryCode: "CC", material: "03", color: "BK", referenceColor: "GR", pct: 30 },
+    ]);
+  });
 
   it("gives a BK SKU with no sales 30% of the GR SKU's, rounded, and leaves GR as it is", async () => {
     repositoryMock.getStatsRows.mockResolvedValue([
@@ -724,6 +732,7 @@ describe("DemandPlanningService.getDashboardData - Fabric 03 BK reference sales"
     const bk = rowBySku(data.rows, BK);
     expect(bk).toMatchObject({ west_90d: 15, west_60d: 11, west_30d: 5, west_15d: 2, west_7d: 1 });
     expect(bk.sales_reference_sku).toBe(GR);
+    expect(bk.sales_reference_pct).toBe(30);
     expect(rowBySku(data.rows, GR)).toMatchObject({ west_90d: 49, west_60d: 36, west_30d: 15, west_15d: 8, west_7d: 3 });
     expect(rowBySku(data.rows, GR).sales_reference_sku).toBeUndefined();
   });
@@ -783,6 +792,83 @@ describe("DemandPlanningService.getDashboardData - Fabric 03 BK reference sales"
     const { data } = await DemandPlanningService.getDashboardData(baseQuery);
     expect(rowBySku(data.rows, BK).west_90d).toBe(4);
     expect(rowBySku(data.rows, BK).sales_reference_sku).toBeUndefined();
+  });
+
+  it("does nothing without a rule", async () => {
+    repositoryMock.getSalesReferenceColorRules.mockResolvedValue([]);
+    repositoryMock.getStatsRows.mockResolvedValue([ccStatsRow(GR, { west_90d: 49 }), ccStatsRow(BK)]);
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, BK).west_90d).toBe(0);
+    expect(rowBySku(data.rows, BK).sales_reference_sku).toBeUndefined();
+  });
+});
+
+describe("DemandPlanningService.getDashboardData - per-SKU reference sales", () => {
+  const BE = "CA-SC-10-F-99-BE-1TO";
+  const IB = "CA-SC-10-F-99-IB-1TO";
+  const scStatsRow = (sku: string, overrides: Record<string, unknown> = {}) => ccStatsRow(sku, { category_code: "SC", ...overrides });
+
+  it("plans a SKU on the registered percent of its registered reference SKU", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      scStatsRow(BE, { west_90d: 49, west_60d: 36, west_30d: 15, west_15d: 8, west_7d: 3 }),
+      scStatsRow(IB, { sales_reference_sku: BE, sales_reference_pct: 30 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const ib = rowBySku(data.rows, IB);
+    expect(ib).toMatchObject({ west_90d: 15, west_60d: 11, west_30d: 5, west_15d: 2, west_7d: 1 });
+    expect(ib).toMatchObject({ sales_reference_sku: BE, sales_reference_pct: 30 });
+    expect(rowBySku(data.rows, BE)).toMatchObject({ west_90d: 49, west_60d: 36, west_30d: 15, west_15d: 8, west_7d: 3 });
+  });
+
+  it("keeps the SKU's own sales where they are higher", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      scStatsRow("CA-SC-10-F-10-BE-1TO", { west_90d: 405, west_60d: 237, west_30d: 107, west_15d: 47, west_7d: 24 }),
+      scStatsRow("CA-SC-10-F-10-IB-1TO", {
+        west_90d: 558, west_60d: 429, west_30d: 231, west_15d: 116, west_7d: 50,
+        sales_reference_sku: "CA-SC-10-F-10-BE-1TO", sales_reference_pct: 30,
+      }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, "CA-SC-10-F-10-IB-1TO")).toMatchObject({
+      west_90d: 558, west_60d: 429, west_30d: 231, west_15d: 116, west_7d: 50,
+    });
+  });
+
+  it("wins over a colour rule for the same SKU", async () => {
+    const OTHER = "CA-SC-10-F-99-BK-1TO";
+    repositoryMock.getSalesReferenceColorRules.mockResolvedValue([
+      { categoryCode: "SC", material: null, color: "IB", referenceColor: "BE", pct: 30 },
+    ]);
+    repositoryMock.getStatsRows.mockResolvedValue([
+      scStatsRow(BE, { west_90d: 100 }),
+      scStatsRow(OTHER, { west_90d: 40 }),
+      scStatsRow(IB, { sales_reference_sku: OTHER, sales_reference_pct: 50 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, IB)).toMatchObject({ west_90d: 20, sales_reference_sku: OTHER, sales_reference_pct: 50 });
+  });
+
+  it("reads the reference at its own sales, not at what it references in turn", async () => {
+    const BK = "CA-SC-10-F-99-BK-1TO";
+    repositoryMock.getStatsRows.mockResolvedValue([
+      scStatsRow(BK, { west_90d: 100 }),
+      scStatsRow(BE, { west_90d: 10, sales_reference_sku: BK, sales_reference_pct: 50 }),
+      scStatsRow(IB, { sales_reference_sku: BE, sales_reference_pct: 50 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, BE).west_90d).toBe(50);
+    expect(rowBySku(data.rows, IB).west_90d).toBe(5); // 50% of BE's own 10, not of 50
+  });
+
+  it("leaves the SKU alone when the reference SKU is not on the grid", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([scStatsRow(IB, { west_90d: 4, sales_reference_sku: BE, sales_reference_pct: 30 })]);
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, IB).west_90d).toBe(4);
+    expect(rowBySku(data.rows, IB).sales_reference_sku).toBeUndefined();
   });
 });
 

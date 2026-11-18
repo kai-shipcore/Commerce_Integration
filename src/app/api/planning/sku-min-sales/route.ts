@@ -1,6 +1,7 @@
 // Code Guide: SKU Min Sales CRUD (GET list / POST save one-or-many / DELETE by sku)
-// backs the /planning/min-sales page. A registered SKU's minimum is a floor on the
-// Demand Planning "T.Avg 현재" column, applied at read time by DemandPlanningService.
+// backs the /planning/min-sales page. A registered SKU has a fixed floor on the
+// Demand Planning "T.Avg 현재" column, a reference SKU and percent its sales are
+// planned on, or both; DemandPlanningService applies them at read time.
 // Controller only: validates with Zod and delegates to SkuMinSalesService.
 
 import { NextRequest } from "next/server";
@@ -13,7 +14,9 @@ import { apiError, apiSuccess, handleApiError } from "@/lib/api-response";
 
 const RowSchema = z.object({
   masterSku: z.string().trim().min(1).max(128),
-  minTotalAvgCurr: z.number().finite().min(0).max(1_000_000),
+  minTotalAvgCurr: z.number().finite().min(0).max(1_000_000).nullish(),
+  referenceSku: z.string().trim().max(128).nullish(),
+  referencePct: z.number().finite().positive().max(1000).nullish(),
   note: z.string().trim().max(1000).nullish(),
 });
 
