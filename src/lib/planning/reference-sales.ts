@@ -23,6 +23,8 @@
  * Pure and client-safe.
  */
 
+import { carCoverSegments } from "@/lib/planning/sku-format";
+
 /** Categories whose master SKU carries a colour segment. */
 export const COLOR_RULE_CATEGORIES = ["CC", "SC"] as const;
 export type ColorRuleCategory = (typeof COLOR_RULE_CATEGORIES)[number];
@@ -44,25 +46,32 @@ export interface SalesReference {
   pct: number;
 }
 
-// CC-<line>-<fabric>-<size>-<color>-<colorType>
+// CC-<line>-<fabric>-<size>-<color>-<colorType>      car cover, current format
+// CA-CC-<fabric>-<line>-<size>-<color>-<colorType>   car cover, unified format
 // CA-SC-<material>-<position>-<size>[-<position>-<size>]-<color>-<colorType>
-// Both carry fabric / material third and the colour second to last.
-const MATERIAL_SEGMENT_INDEX = 2;
-const CATEGORY_SHAPE: Record<ColorRuleCategory, { prefix: string[]; minSegments: number; maxSegments: number }> = {
-  CC: { prefix: ["CC"], minSegments: 6, maxSegments: 6 },
-  SC: { prefix: ["CA", "SC"], minSegments: 7, maxSegments: 9 },
-};
+// All carry the colour second to last. Where the fabric sits depends on the
+// car cover format, so it comes from carCoverSegments (see sku-format.ts).
+const SEAT_COVER_MATERIAL_INDEX = 2;
+const SEAT_COVER_MIN_SEGMENTS = 7;
+const SEAT_COVER_MAX_SEGMENTS = 9;
 
 /** The colour-rule fields of a master SKU, or null when it has no colour segment to match on. */
 export function colorRuleParts(masterSku: string): { categoryCode: ColorRuleCategory; material: string; color: string; parts: string[] } | null {
-  const parts = masterSku.trim().toUpperCase().split("-");
-  for (const categoryCode of COLOR_RULE_CATEGORIES) {
-    const shape = CATEGORY_SHAPE[categoryCode];
-    if (parts.length < shape.minSegments || parts.length > shape.maxSegments) continue;
-    if (!shape.prefix.every((segment, index) => parts[index] === segment)) continue;
-    return { categoryCode, material: parts[MATERIAL_SEGMENT_INDEX], color: parts[parts.length - 2], parts };
+  const carCover = carCoverSegments(masterSku);
+  if (carCover) {
+    // A full car cover SKU only: one with a line, and nothing after the style.
+    if (carCover.line === null || carCover.parts.length !== carCover.style + 1) return null;
+    return {
+      categoryCode: "CC",
+      material: carCover.parts[carCover.fabric],
+      color: carCover.parts[carCover.color],
+      parts: carCover.parts,
+    };
   }
-  return null;
+  const parts = masterSku.trim().toUpperCase().split("-");
+  if (parts[0] !== "CA" || parts[1] !== "SC") return null;
+  if (parts.length < SEAT_COVER_MIN_SEGMENTS || parts.length > SEAT_COVER_MAX_SEGMENTS) return null;
+  return { categoryCode: "SC", material: parts[SEAT_COVER_MATERIAL_INDEX], color: parts[parts.length - 2], parts };
 }
 
 /**

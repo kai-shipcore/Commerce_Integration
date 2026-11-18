@@ -1,5 +1,6 @@
 "use client";
 
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -741,8 +742,8 @@ function skuFilterLabel(key: SkuPartFilterKey, product: BaseCategoryFilter | und
 function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
+  if (isSteeringWheelSku(normalized)) return "SWC";
+  if (isCarCoverSku(normalized)) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";

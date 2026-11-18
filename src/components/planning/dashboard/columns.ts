@@ -1,3 +1,4 @@
+import { carCoverSegments, isCarCoverSku, isSteeringWheelSku, parseUnifiedSku } from "@/lib/planning/sku-format";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
@@ -563,8 +564,8 @@ export type { FloorMatType };
 export function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
+  if (isSteeringWheelSku(normalized)) return "SWC";
+  if (isCarCoverSku(normalized)) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
@@ -1248,8 +1249,8 @@ export function baseCategoryForRow(
 function inferCategoryCodeFromSku(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" | null {
   const normalized = String(sku ?? "").trim().toUpperCase();
   if (!normalized) return null;
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
+  if (isSteeringWheelSku(normalized)) return "SWC";
+  if (isCarCoverSku(normalized)) return "CC";
   const parts = normalized.split("-");
   if (parts[1] === "SC") return "SC";
   if (parts[1] === "FM" || parts.includes("FM")) return "FM";
@@ -1264,6 +1265,48 @@ export function skuFilterKeysForProduct(product: "sc" | "cc" | "fm" | "ac"): Sku
 
 export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone" | "category_code">): SkuParts {
   const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
+  // A car cover in either SKU format: the fabric sits before the line in the
+  // unified one, so the parts are read by name rather than by position.
+  const carCover = carCoverSegments(String(row.sku ?? ""));
+  if (carCover) {
+    const at = (index: number | null) => (index === null ? "" : carCover.parts[index] ?? "");
+    return {
+      ...EMPTY_SKU_PARTS,
+      formula: at(carCover.line),
+      fabric: normalizeSkuNumber(at(carCover.fabric)),
+      size: at(carCover.size),
+      color: at(carCover.color),
+      type: at(carCover.style),
+    };
+  }
+  const unified = parseUnifiedSku(String(row.sku ?? ""));
+  // A steering wheel cover in the unified format (CA-SW-13-AG-38-BK-1TO) shows
+  // under the car cover filters, as CA-SWC-… rows do below.
+  if (unified?.product === "SW") {
+    return {
+      ...EMPTY_SKU_PARTS,
+      formula: unified.identifier1,
+      fabric: normalizeSkuNumber(unified.material),
+      size: unified.identifier2,
+      color: unified.color,
+      type: unified.style,
+    };
+  }
+  // A floor mat in the unified format: CA-FM-80-FS-13726-BK-1TO, or the 3rd
+  // row CA-FM-80-S3-BM-X705-BK-1TO whose second identifier is make-model. It
+  // has no surface segment any more.
+  if (unified?.product === "FM") {
+    const [first, ...rest] = unified.identifier2.split("-");
+    return {
+      ...EMPTY_SKU_PARTS,
+      prefix: "CA",
+      productCode: "FM",
+      material: normalizeSkuNumber(unified.material),
+      vehiclePosition: unified.identifier1,
+      make: rest.length > 0 ? first : "",
+      model: rest.length > 0 ? rest.join("-") : first,
+    };
+  }
   if (row.category_code === "CC" || row.category_code === "SWC" || parts[0] === "CC") {
     if (/^\d+$/.test(parts[1] ?? "")) {
       return {

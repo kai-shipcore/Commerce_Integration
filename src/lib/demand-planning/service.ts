@@ -28,6 +28,7 @@ import {
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { toFinalMasterSku } from "@/lib/planning/master-sku";
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { colorRuleReference, withReferenceSales, type SalesReference } from "@/lib/planning/reference-sales";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
@@ -74,8 +75,8 @@ function parseSku(sku: string): { seat: string; no: number; color: string; tone:
 
 function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
   const normalized = sku.toUpperCase();
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
+  if (isSteeringWheelSku(normalized)) return "SWC";
+  if (isCarCoverSku(normalized)) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
@@ -410,7 +411,7 @@ export const DemandPlanningService = {
     const rollupSources = new Map<string, string[]>();
     for (const r of rowsResult) {
       const sku = r.sku as string;
-      if (!sku.startsWith("CC-")) continue;
+      if (!isCarCoverSku(sku)) continue;
       const finalSku = toFinalMasterSku(sku);
       if (finalSku === sku) continue;
       const windows = effectiveSalesWindows(r, velEntryFor(r, sku));

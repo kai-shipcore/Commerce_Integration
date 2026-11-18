@@ -16,6 +16,7 @@ import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
+import { carCoverSkuSql, steeringWheelSkuSql } from "@/lib/planning/sku-format";
 import type { ColorReferenceRule, ColorRuleCategory } from "@/lib/planning/reference-sales";
 
 function primary(): Pool {
@@ -114,7 +115,7 @@ function categoryParamsFor(categoryCodes: DashboardFilters["categoryCodes"]): st
 // are matched by their stored code alone.
 const CATEGORY_PATTERN_FALLBACK: Partial<Record<DashboardCategoryCode, string>> = {
   SC: `(UPPER(s.master_sku) LIKE 'CA-SC-%' OR UPPER(s.master_sku) LIKE 'CL-SC-%')`,
-  CC: `(UPPER(s.master_sku) LIKE 'CC-%' OR UPPER(s.master_sku) LIKE 'CA-CC-%')`,
+  CC: carCoverSkuSql("s.master_sku"),
   FM: `(UPPER(s.master_sku) LIKE 'CA-FM-%' OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')))`,
 };
 
@@ -880,7 +881,7 @@ export const DemandPlanningRepository = {
         1, 1, 0.078, 1, 2.8,
         NOW(), NOW()
       FROM shipcore.fc_velocity_link_snapshot
-      WHERE link_master_sku ILIKE '%SWC%'
+      WHERE ${steeringWheelSkuSql("link_master_sku")}
         AND link_master_sku IS NOT NULL
       ON CONFLICT (master_sku) DO UPDATE SET
         category_code = 'SWC',

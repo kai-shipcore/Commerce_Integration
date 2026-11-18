@@ -94,6 +94,47 @@ Also note the snapshot sync's `GROUP BY 1, 2, 3, 4, 5, 7` is positional against
 `LINK_SELECT` / `CUSTOM_SELECT`. Changing the select list shifts those numbers, and a
 wrong-but-valid number groups the wrong column without raising an error.
 
+### Master SKUs come in two formats, and both stay
+
+The SKU format is being unified (planning team sheet, 2026-11-18) to
+`CA-<product>-<material>-<identifier 1>-<identifier 2>-<colour>-<style>`:
+`CC-CN-15-B-BKLG-STR` becomes `CA-CC-15-CN-B-BKLG-STR`, `CA-SWC-05-38-BKBK` becomes
+`CA-SW-13-AG-38-BK-1TO`, `CA-FM-80-FM13726` becomes `CA-FM-80-FS-13726-BK-1TO`. Seat covers
+already have this shape. `src/lib/planning/sku-format.ts` lists every product and is the one
+place that reads a SKU's shape.
+
+- **Both formats are read for good.** Discontinued SKUs keep their old code
+  (`CA-SWC-03-38-BKDI`, `CA-TW-01-MIX`) and sales history sits under the old codes, so this
+  is not a changeover window to clean up after.
+- **Do not read a car cover by segment index.** The fabric moved in front of the line, so
+  the index that holds the line in one format holds the fabric in the other. Use
+  `carCoverSegments`. `toFinalMasterSku`, the colour rules and the grid's SKU part filters
+  all go through it.
+- **Do not count segments either.** Identifier 2 can hold a hyphen
+  (`CA-FM-80-S3-BM-X705-BK-1TO` is eight), so `parseUnifiedSku` reads product / material /
+  identifier 1 from the front, colour / style from the back, and takes the rest as
+  identifier 2.
+- **Do not write `startsWith("CC-")` or `includes("SWC")`.** Use `isCarCoverSku` /
+  `isSteeringWheelSku` (and `carCoverSkuSql` / `steeringWheelSkuSql` in SQL). A steering
+  wheel cover is `SWC` in the old code and the `SW` product in the new one; its
+  `category_code` and `sales_status` stay `SWC`.
+- **`fc_products.category_code` is still the first thing to read.** The helpers are for
+  code that only has the SKU text: a SKU not in `fc_products` yet, and SQL classifying a raw
+  SKU column.
+
+Two things were deliberately left alone:
+
+- **Velocity's `item_category`** (`ITEM_CATEGORY_CASE` in `src/lib/velocity/repository.ts`)
+  still reads `LIKE 'CC%'` and `'%SWC%'`, so `CA-CC-…` and `CA-SW-…` land in
+  "Miscellaneous" on the Velocity page. `item_category` is part of the snapshot's conflict
+  key: changing the rule alone would insert the same sales again under the new category
+  next to the rows already stored under the old one. It needs a migration that re-keys the
+  stored rows in the same release.
+- **Linking an old code to its new code**, so a renamed SKU keeps its sales history. Car
+  Cover and Floor Mat convert by rule; Steering Wheel, Neck Pillow, Towel and Windshield
+  were renumbered and need a list from the planning team. Until that exists a renamed SKU
+  starts at zero sales.
+
 ### The As-of date replays what there is history for, and nothing else
 
 The Demand Planning toolbar's As of control (`?asOf=`) recomputes the view for a past

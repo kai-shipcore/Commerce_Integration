@@ -34,6 +34,8 @@
  * else is not passed in and does not pair. Incoming units arrive at Dtrans.
  */
 
+import { parseUnifiedSku } from "@/lib/planning/sku-format";
+
 export type PairingLocation = "primary" | "dtrans" | "east";
 
 export const PAIRING_LOCATIONS: readonly PairingLocation[] = ["primary", "dtrans", "east"];
@@ -424,11 +426,15 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
 
 /**
  * Short master label for pairing text ("FM15116 × 15"): the SKU from its
- * "FM<digits>" segment on, e.g. CA-FM-80-FM13534-C reads FM13534-C.
+ * "FM<digits>" segment on, e.g. CA-FM-80-FM13534-C reads FM13534-C. A SKU in
+ * the unified format has no such segment and reads as its two identifiers,
+ * the code printed on the box: CA-FM-80-FS-13726-BK-1TO reads FS-13726.
  */
 export function floorMatMasterLabel(masterSku: string): string {
   const match = masterSku.toUpperCase().match(/(?:^|-)(FM\d.*)$/);
-  return match ? match[1] : masterSku;
+  if (match) return match[1];
+  const unified = parseUnifiedSku(masterSku);
+  return unified?.product === "FM" ? `${unified.identifier1}-${unified.identifier2}` : masterSku;
 }
 
 /** "Front: 3 | Rear: 0", or null when the location holds no split pieces. */

@@ -1,3 +1,4 @@
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { normalizeMasterSku, partMasterSkuSql } from "@/lib/planning/master-sku";
@@ -172,14 +173,15 @@ export function inferProduct(masterSku: string): {
 } {
   const sku = masterSku.toUpperCase();
 
-  if (sku.includes("SWC")) {
+  // CA-SWC-… today, CA-SW-… in the unified format (see sku-format.ts).
+  if (isSteeringWheelSku(sku)) {
     return { productKey: "swc", category: "SWC", categoryCode: "SWC", moq: 1, cbmPerUnit: 0.078, caseQty: 1, weightKg: 2.8 };
   }
 
   // A handful of car covers were keyed CA-CC-… (the accessories prefix on a
   // car-cover body, e.g. CA-CC-15-TC-K-DGBK-STR). They are car covers; without
   // this they fall through to Accessories and plan with its MOQ/CBM.
-  if (sku.startsWith("CC-") || sku.startsWith("CA-CC-") || sku === "C-SJ-GR-7") {
+  if (isCarCoverSku(sku) || sku === "C-SJ-GR-7") {
     return { productKey: "cc", category: "Car Cover", categoryCode: "CC", moq: 3, cbmPerUnit: 0.078, caseQty: 3, weightKg: 2.8 };
   }
 

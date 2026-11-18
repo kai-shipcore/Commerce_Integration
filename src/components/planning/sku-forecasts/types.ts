@@ -1,3 +1,4 @@
+import { isCarCoverSku } from "@/lib/planning/sku-format";
 import type { DemandRow } from "@/types/demand-planning";
 
 export type ProductKey = "sc" | "cc" | "fm";
@@ -46,7 +47,7 @@ export function productKeyForRow(row: DemandRow): ProductKey {
   if (row.category_code === "CC" || row.category_code === "SWC") return "cc";
   if (row.category_code === "FM") return "fm";
   const sku = row.sku.toUpperCase();
-  if (sku.startsWith("CC-")) return "cc";
+  if (isCarCoverSku(sku)) return "cc";
   if (sku.startsWith("CA-FM-") || sku.split("-").includes("FM")) return "fm";
   return "sc";
 }
@@ -58,7 +59,7 @@ export function forecastProductKeyForRow(row: DemandRow): ProductKey | null {
   if (row.category_code) return null;
 
   const sku = row.sku.toUpperCase();
-  if (sku.startsWith("CC-")) return "cc";
+  if (isCarCoverSku(sku)) return "cc";
   if (sku.startsWith("CA-FM-") || sku.split("-").includes("FM")) return "fm";
   if (sku.startsWith("CA-SC-") || sku.startsWith("CL-SC-")) return "sc";
   return null;

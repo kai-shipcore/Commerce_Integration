@@ -1,3 +1,5 @@
+import { carCoverSegments } from "@/lib/planning/sku-format";
+
 const MASTER_SKU_REMAP: Record<string, string> = {
   "CC-CP-07-N-GR": "CC-CP-03-M-GR-1TO",
   "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
@@ -77,8 +79,9 @@ export function partMasterSkuSql(skuExpression: string): string {
 // the old SKUs, so the two must stay separate rows while demand rolls up onto
 // the final one.
 //
-// Car Cover master SKUs are 6 segments: CC-<line>-<series>-<model>-<color>-<suffix>.
-// The two remaps live on different segments, so they are keyed by position.
+// The two remaps live on different segments (line and colour). Where those
+// sit depends on the SKU format, so they are found with carCoverSegments:
+// CC-TN-15-B-BKGR-STR and CA-CC-15-TN-B-BKGR-STR both become …TNS…BKLG….
 const FINAL_CAR_COVER_LINE_REMAP: Record<string, string> = {
   TN: "TNS",
 };
@@ -87,17 +90,24 @@ const FINAL_CAR_COVER_COLOR_REMAP: Record<string, string> = {
   BKGR: "BKLG",
 };
 
-const LINE_SEGMENT_INDEX = 1;
-const COLOR_SEGMENT_INDEX = 4;
+// A SKU that is not a car cover is read at the positions of the current
+// car cover format, as it always was.
+const LEGACY_LINE_SEGMENT_INDEX = 1;
+const LEGACY_COLOR_SEGMENT_INDEX = 4;
 
 export function toFinalMasterSku(masterSku: string): string {
   const parts = masterSku.split("-");
+  const segments = carCoverSegments(masterSku);
+  const lineIndex = segments ? segments.line : LEGACY_LINE_SEGMENT_INDEX;
+  const colorIndex = segments ? segments.color : LEGACY_COLOR_SEGMENT_INDEX;
 
-  const line = FINAL_CAR_COVER_LINE_REMAP[parts[LINE_SEGMENT_INDEX]];
-  if (line) parts[LINE_SEGMENT_INDEX] = line;
+  if (lineIndex !== null) {
+    const line = FINAL_CAR_COVER_LINE_REMAP[parts[lineIndex]];
+    if (line) parts[lineIndex] = line;
+  }
 
-  const color = FINAL_CAR_COVER_COLOR_REMAP[parts[COLOR_SEGMENT_INDEX]];
-  if (color) parts[COLOR_SEGMENT_INDEX] = color;
+  const color = FINAL_CAR_COVER_COLOR_REMAP[parts[colorIndex]];
+  if (color) parts[colorIndex] = color;
 
   return parts.join("-");
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -345,8 +346,8 @@ function productKeyForTimelineSku(item: ContainerItem, row?: DemandRow): Timelin
     return row.category_code.toLowerCase() as TimelineProductKey;
   }
   const normalized = item.sku.toUpperCase();
-  if (normalized.includes("SWC")) return "swc";
-  if (normalized.startsWith("CC-")) return "cc";
+  if (isSteeringWheelSku(normalized)) return "swc";
+  if (isCarCoverSku(normalized)) return "cc";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "sc";
   return null;

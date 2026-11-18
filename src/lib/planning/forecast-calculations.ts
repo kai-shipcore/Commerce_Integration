@@ -1,3 +1,4 @@
+import { isCarCoverSku } from "./sku-format";
 import type { SeasonalFactors } from "./seasonal-factors";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, type SalesWindowWeights } from "./sales-window-weights";
 
@@ -48,7 +49,7 @@ export type ForecastCategoryCode = "SC" | "CC" | "FM";
 
 export function forecastCategoryCodeForSku(sku: string): ForecastCategoryCode {
   const normalized = sku.toUpperCase();
-  if (normalized.startsWith("CC-")) return "CC";
+  if (isCarCoverSku(normalized)) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   return "SC";
 }
@@ -130,7 +131,7 @@ export function baselineBackorderQty(
 /** Car Cover's source sheet suppresses back orders for the `-03-` SKU family. */
 export function isCarCover03Sku(sku: string): boolean {
   const normalized = sku.toUpperCase();
-  return normalized.startsWith("CC-") && normalized.includes("-03-");
+  return isCarCoverSku(normalized) && normalized.includes("-03-");
 }
 
 export function sheetBaselineBackorderQty(
@@ -164,7 +165,7 @@ export function sheetContainerEstimatedSales(
   if (isCarCover03Sku(sku)) {
     return Math.round(Math.min(projectedSales, Math.max(availableQty - inboundQty, 0)));
   }
-  return sku.toUpperCase().startsWith("CC-") && availableQty === 0 ? 0 : Math.round(projectedSales);
+  return isCarCoverSku(sku) && availableQty === 0 ? 0 : Math.round(projectedSales);
 }
 
 /**

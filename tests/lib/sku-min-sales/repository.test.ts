@@ -94,7 +94,9 @@ describe("SkuMinSalesRepository colour rules", () => {
     await expect(SkuMinSalesRepository.listActiveColorRuleSkus()).resolves.toEqual(["CC-TT-03-Y-BK-1TO"]);
     const [sql] = poolQueryMock.mock.calls[0];
     expect(sql).toContain("status = 'active'");
-    expect(sql).toContain("master_sku LIKE 'CC-%' OR master_sku LIKE 'CA-SC-%'");
+    // Car covers in the current (CC-) and the unified (CA-CC-) SKU format.
+    expect(sql).toContain("UPPER(master_sku) LIKE 'CC-%' OR UPPER(master_sku) LIKE 'CA-CC-%'");
+    expect(sql).toContain("master_sku LIKE 'CA-SC-%'");
   });
 });
 

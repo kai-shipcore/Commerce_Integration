@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
@@ -243,8 +244,8 @@ function inferProductKey(sku: string): ContainerProductKey {
   const matchedSku = mockSkus.find((item) => item.id === sku);
   if (matchedSku) return matchedSku.product;
   const normalized = sku.toUpperCase();
-  if (normalized.includes("SWC")) return "swc";
-  if (normalized.startsWith("CC")) return "cc";
+  if (isSteeringWheelSku(normalized)) return "swc";
+  if (normalized.startsWith("CC") || isCarCoverSku(normalized)) return "cc";
   if (normalized.startsWith("CA-FM")) return "fm";
   return "sc";
 }

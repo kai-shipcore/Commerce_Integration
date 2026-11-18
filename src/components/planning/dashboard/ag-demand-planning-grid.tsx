@@ -1,5 +1,6 @@
 "use client";
 
+import { isCarCoverSku, isSteeringWheelSku } from "@/lib/planning/sku-format";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -1299,8 +1300,8 @@ function baseColumnWidth(column: { id: string; w: number }) {
 function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
+  if (isSteeringWheelSku(normalized)) return "SWC";
+  if (isCarCoverSku(normalized)) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";

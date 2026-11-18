@@ -13,6 +13,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { carCoverSkuSql } from "@/lib/planning/sku-format";
 import type { ColorRuleCategory } from "@/lib/planning/reference-sales";
 
 export type SqlExecutor = Pick<Pool, "query">;
@@ -325,7 +326,7 @@ export const SkuMinSalesRepository = {
       `SELECT master_sku
        FROM shipcore.fc_products
        WHERE status = 'active'
-         AND (master_sku LIKE 'CC-%' OR master_sku LIKE 'CA-SC-%')
+         AND (${carCoverSkuSql("master_sku")} OR master_sku LIKE 'CA-SC-%')
        ORDER BY master_sku`,
     );
     return result.rows.map((row) => row.master_sku);

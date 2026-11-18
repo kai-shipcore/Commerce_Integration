@@ -1,5 +1,6 @@
 "use client";
 
+import { isCarCoverSku } from "@/lib/planning/sku-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
@@ -46,7 +47,7 @@ type SkuMasterResponse = {
 
 function productKeyForSku(sku: string): ProductKey {
   const normalized = sku.toUpperCase();
-  if (normalized.startsWith("CC-")) return "cc";
+  if (isCarCoverSku(normalized)) return "cc";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
   return "sc";
 }

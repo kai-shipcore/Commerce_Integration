@@ -6,6 +6,7 @@
  */
 
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { carCoverSkuSql } from "@/lib/planning/sku-format";
 
 // Shared category-classification CASE expression used in both queries
 const CAT_CASE = `
@@ -14,7 +15,7 @@ const CAT_CASE = `
     WHEN UPPER(p.category_code) = 'SWC' THEN 'cc'
     WHEN UPPER(p.category_code) = 'SC' THEN 'sc'
     WHEN UPPER(p.category_code) = 'FM' THEN 'fm'
-    WHEN UPPER(s.master_sku) LIKE 'CC-%' THEN 'cc'
+    WHEN ${carCoverSkuSql("s.master_sku")} THEN 'cc'
     WHEN UPPER(s.master_sku) LIKE 'CA-FM-%'
       OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')) THEN 'fm'
     WHEN UPPER(s.master_sku) LIKE 'CA-SC-%'
