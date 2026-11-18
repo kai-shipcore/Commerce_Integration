@@ -145,6 +145,27 @@ describe("Sales Status column", () => {
   });
 });
 
+describe("Floor Mat Type column", () => {
+  it("renders and sorts by the SKU Master's Floor Mat Type", () => {
+    const column = ALL_COLS.find((entry) => entry.id === "floor_mat_type");
+    const row = { floor_mat_type: "1+2 Set" } as never;
+
+    expect(column?.val(row, 0, "ok")).toBe("1+2 Set");
+    expect(column?.sortVal?.(row)).toBe("1+2 Set");
+  });
+
+  it("is only included when Floor Mat is among the selected products", () => {
+    expect(columnAppliesToCategories("floor_mat_type", ["fm"])).toBe(true);
+    expect(columnAppliesToCategories("floor_mat_type", ["sc"])).toBe(false);
+    expect(columnAppliesToCategories("floor_mat_type", ["sc", "fm"])).toBe(true);
+  });
+
+  it("migrates saved column orders beside Sales Status", () => {
+    expect(ensureAdditionalNotesInColumnOrder(["back", "status", "sku"]).slice(0, 4))
+      .toEqual(["back", "status", "floor_mat_type", "sku"]);
+  });
+});
+
 describe("matchesAnyLogicalColumnId", () => {
   it("matches a base column by its own id", () => {
     expect(matchesAnyLogicalColumnId("sku", new Set(["sku"]))).toBe(true);
@@ -680,8 +701,8 @@ describe("freezeColumnAfterHiding", () => {
   });
 
   it("uses the default column order when none is saved", () => {
-    // ALL_COLS order: ... back, status, sku, ...
-    expect(freezeColumnAfterHiding("sku", [], shown(["sku"]))).toBe("status");
+    // ALL_COLS order: ... status, floor_mat_type, sku, ...
+    expect(freezeColumnAfterHiding("sku", [], shown(["sku"]))).toBe("floor_mat_type");
   });
 
   it("ignores container and formula ids in a saved order", () => {

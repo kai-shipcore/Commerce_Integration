@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Pipette, RotateCcw } from "lucide-react";
+import { Pipette, RotateCcw, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const COLOR_ROWS = [
@@ -16,6 +16,39 @@ const COLOR_ROWS = [
 ] as const;
 
 const STANDARD_COLORS = ["#000000", "#FFFFFF", "#EA4335", "#FB8C00", "#FABB05", "#34A853", "#24C1E0", "#4285F4", "#7E57C2", "#EC407A"] as const;
+export const PLANNING_CUSTOM_COLORS_STORAGE_KEY = "planning-dashboard-custom-colors";
+const CUSTOM_COLORS_CHANGED_EVENT = "planning-custom-colors-changed";
+const HEX_COLOR = /^#[0-9A-F]{6}$/;
+
+export function normalizeSavedCustomColors(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value
+    .filter((color): color is string => typeof color === "string")
+    .map((color) => color.trim().toUpperCase())
+    .filter((color) => HEX_COLOR.test(color))))
+    .slice(0, 20);
+}
+
+export function addSavedCustomColor(colors: string[], color: string): string[] {
+  const normalized = color.trim().toUpperCase();
+  if (!HEX_COLOR.test(normalized)) return normalizeSavedCustomColors(colors);
+  return [normalized, ...normalizeSavedCustomColors(colors).filter((entry) => entry !== normalized)].slice(0, 20);
+}
+
+export function removeSavedCustomColor(colors: string[], color: string): string[] {
+  const normalized = color.trim().toUpperCase();
+  return normalizeSavedCustomColors(colors).filter((entry) => entry !== normalized);
+}
+
+function loadSavedCustomColors(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return normalizeSavedCustomColors(JSON.parse(window.localStorage.getItem(PLANNING_CUSTOM_COLORS_STORAGE_KEY) ?? "[]"));
+  } catch {
+    window.localStorage.removeItem(PLANNING_CUSTOM_COLORS_STORAGE_KEY);
+    return [];
+  }
+}
 
 function checkColor(color: string) {
   const hex = color.replace("#", "");
@@ -79,9 +112,29 @@ export function PlanningColorPalettePopover({
   onReset: () => boolean | void;
 }) {
   const [open, setOpen] = useState(false);
+  const [savedCustomColors, setSavedCustomColors] = useState<string[]>([]);
+  useEffect(() => {
+    const refresh = () => setSavedCustomColors(loadSavedCustomColors());
+    refresh();
+    window.addEventListener(CUSTOM_COLORS_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(CUSTOM_COLORS_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  const persistCustomColors = (colors: string[]) => {
+    setSavedCustomColors(colors);
+    window.localStorage.setItem(PLANNING_CUSTOM_COLORS_STORAGE_KEY, JSON.stringify(colors));
+    window.dispatchEvent(new Event(CUSTOM_COLORS_CHANGED_EVENT));
+  };
   const applyAndClose = (color: string) => {
     onApply(color.toUpperCase());
     setOpen(false);
+  };
+  const saveApplyAndClose = (color: string) => {
+    persistCustomColors(addSavedCustomColor(savedCustomColors, color));
+    applyAndClose(color);
   };
   const resetAndClose = () => {
     if (onReset() !== false) setOpen(false);
@@ -109,11 +162,33 @@ export function PlanningColorPalettePopover({
           {STANDARD_COLORS.map((color) => colorButton(color, `Set standard ${ariaKind} color ${color}`))}
         </div>
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
+        {savedCustomColors.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+            {savedCustomColors.map((color) => (
+              <span key={color} style={{ display: "inline-flex", position: "relative" }}>
+                {colorButton(color, `Set saved ${ariaKind} color ${color}`)}
+                <button
+                  type="button"
+                  aria-label={`Delete saved color ${color}`}
+                  title={`Delete ${color}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    persistCustomColors(removeSavedCustomColor(savedCustomColors, color));
+                  }}
+                  style={{ alignItems: "center", background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "50%", color: "#475569", cursor: "pointer", display: "inline-flex", height: 12, justifyContent: "center", padding: 0, position: "absolute", right: -4, top: -4, width: 12 }}
+                >
+                  <X size={8} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <label title={`Choose custom ${ariaKind} color`} style={{ alignItems: "center", cursor: "pointer", display: "inline-flex", gap: 6, marginTop: 6, position: "relative" }}>
           <span aria-hidden="true" style={{ background: selected, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
           <Pipette size={15} aria-hidden="true" />
-          <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
-          <DeferredCustomColor key={selected} value={selected} label={`Custom ${ariaKind} color`} onCommit={applyAndClose} />
+          <span style={{ color: "#475569", fontSize: 11 }}>Add custom color</span>
+          <DeferredCustomColor key={selected} value={selected} label={`Custom ${ariaKind} color`} onCommit={saveApplyAndClose} />
         </label>
       </PopoverContent>
     </Popover>

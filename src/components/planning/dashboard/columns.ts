@@ -243,6 +243,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "workflow_note_3", grp: "fix", label: "Note 3",      w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note_3 ?? "", sortVal: (r) => r.workflow_note_3 ?? "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
+  { id: "floor_mat_type", grp: "fix", label: "Floor Mat\nType", w: 86, align: "ctr", tint: "", gh: "gh-fix", val: (r) => r.floor_mat_type ?? "", sortVal: (r) => r.floor_mat_type ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}${replacingSoonMark(r)}` }), sortVal: (r) => r.sku },
   { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
@@ -378,7 +379,7 @@ export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
-  "back","status","sku","west","east","total",
+  "back","status","floor_mat_type","sku","west","east","total",
   "tavg_p","tavg_r","tavg_c","inb_qty","inb_lst","next_eta","sod",
 ]);
 
@@ -414,6 +415,7 @@ export const FLOOR_MAT_COLUMN_IDS = [
 
 const CATEGORY_SCOPED_COLUMNS: Record<string, CategoryFilter[]> = {
   qty_ctn: ["cc"],
+  floor_mat_type: ["fm"],
   // Set links and pairing only exist for floor mats.
   ...Object.fromEntries(FLOOR_MAT_COLUMN_IDS.map((id) => [id, ["fm"] as CategoryFilter[]])),
   loose_on_hand: ["fm"],
@@ -1026,6 +1028,11 @@ export function loadSavedColumnOrder(): ColumnOrder {
 export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOrder {
   if (!order.length) return order;
   const next = [...order];
+  // A saved order from before Floor Mat Type existed should show the new
+  // identity column beside Sales Status, not append it at the far right.
+  if (next.includes("status") && !next.includes("floor_mat_type")) {
+    next.splice(next.indexOf("status") + 1, 0, "floor_mat_type");
+  }
   if (next.includes("workflow_note")) {
     let insertAt = next.indexOf("workflow_note") + 1;
     for (const columnId of ["workflow_note_2", "workflow_note_3"]) {

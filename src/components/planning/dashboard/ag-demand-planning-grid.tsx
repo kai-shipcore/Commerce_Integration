@@ -114,6 +114,7 @@ import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-form
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
 import { keepContainerColumnsTogether } from "@/lib/planning/container-column-order";
+import { CHANGED_ADS_FILL, changedAdsFill } from "@/lib/planning/display-colors";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -619,6 +620,7 @@ const GOOGLE_PALETTE_COLOR_NAMES = (() => {
 
 function colorDisplayName(color: string, pick: (ko: string, en: string) => string) {
   const normalized = color.trim().toUpperCase();
+  if (normalized === CHANGED_ADS_FILL) return pick("변경된 ADS", "Changed ADS");
   const paletteName = GOOGLE_PALETTE_COLOR_NAMES.get(normalized);
   if (paletteName) return pick(...paletteName);
 
@@ -2899,7 +2901,11 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
         {params.displayName}
       </span>
       {orderedTotalColumns.length ? (
-        <div className="relative top-[8px] flex w-full flex-none text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
+        // No vertical offset here: the header clips its overflow, so pushing
+        // this row down cut off the bottom of the totals, commas included
+        // ("6,392" read as "6 392"). The container headers' totals sit flush
+        // the same way.
+        <div className="flex w-full flex-none text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
           {orderedTotalColumns.map((column) => {
             const totalLabel = column.total === undefined ? "" : Math.round(column.total).toLocaleString();
             return (
@@ -4704,11 +4710,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return value === null || value === undefined ? "" : String(value);
   }, [columnMenuValue]);
 
-  // Only user-assigned colors belong in the Sheets-style color menu. Default
-  // white/tint backgrounds and inherited black text must not enable a color
-  // type that the user never configured.
+  // Default white/tint backgrounds stay out of the Sheets-style menu. Edited
+  // ADS is the exception: its automatic red is meaningful user state and must
+  // be filterable just like an explicitly assigned fill.
   const columnMenuFillColor = useCallback((key: string, row: DemandRow): string => {
     const parsed = parseColumnMenuKey(key);
+    if (parsed.kind === "base") {
+      const automatic = changedAdsFill(parsed.id, row as unknown as Record<string, unknown>);
+      if (automatic) return automatic;
+    }
     const cellKey = cellColorKey(row.sku, key);
     const explicit = cellColors[cellKey];
     if (explicit) return explicit;
@@ -7864,8 +7874,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ? SELECTED_CELL_FILL
               : conditionalFormat?.fillColor
                 ? conditionalFormat.fillColor
-              : isTotalAvgColumn(column.id) && params.data?.[`${totalAvgField(column.id)}_override`] != null
-                ? "#fecaca"
+              : changedAdsFill(column.id, params.data as unknown as Record<string, unknown>)
+                ? CHANGED_ADS_FILL
               : column.id === "tavg_c" && params.data?.total_avg_curr_min_applied
                 ? MIN_SALES_APPLIED_FILL
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",

@@ -37,6 +37,10 @@ const OPERATORS = new Set<ConditionalFormatOperator>([
   "dateBefore", "dateAfter", "dateIs", "customFormula",
 ]);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const LEGACY_DEFAULT_FILLS = new Set([
+  "#FFFFFF", "#F5F9FF", "#F4FBF4", "#F5FBF7", "#FAF5FF", "#F3F8FF",
+  "#FFFEF0", "#F5FCFC", "#FDF5FF", "#FFF5F5", "#F0F9FF", "#EAF6FF", "#E5F3FF",
+]);
 const RANGE_ENTRY_CACHE = new WeakMap<ConditionalFormatRange, Set<string>>();
 
 function decodeHtml(value: string): string {
@@ -198,6 +202,24 @@ export function normalizeConditionalFormatRules(value: unknown): ConditionalForm
       if (typeof rawStyle[key] === "boolean") style[key] = rawStyle[key];
     }
     if (typeof rawStyle.fontSize === "number" && Number.isFinite(rawStyle.fontSize)) style.fontSize = Math.min(48, Math.max(6, Math.round(rawStyle.fontSize)));
+    // Older UI versions copied the column's current default appearance into
+    // every new rule. A matching rule then pinned that tint over later cell or
+    // column colours. Only migrate the exact untouched legacy seed; custom
+    // rule styles remain intact.
+    const styleKeys = Object.keys(rawStyle).sort();
+    const isUntouchedLegacySeed = styleKeys.length === 4
+      && styleKeys.join(",") === "bold,fillColor,fontSize,textColor"
+      && typeof style.fillColor === "string"
+      && LEGACY_DEFAULT_FILLS.has(style.fillColor)
+      && style.textColor === "#000000"
+      && style.bold === false
+      && style.fontSize === 11;
+    if (isUntouchedLegacySeed) {
+      delete style.fillColor;
+      delete style.textColor;
+      delete style.bold;
+      delete style.fontSize;
+    }
     rules.push({
       id: raw.id.slice(0, 100),
       range: range.kind === "cells" ? { kind: "cells", cellKeys: cleanEntries } : { kind: "columns", columnIds: cleanEntries },

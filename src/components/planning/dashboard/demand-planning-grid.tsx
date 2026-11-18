@@ -197,6 +197,7 @@ const SORT_VALUE_BY_COLUMN: Partial<Record<string, (row: DemandRow) => SortValue
   cbm: (row) => row.cbm,
   back: (row) => row.back,
   status: (row) => row.sales_status,
+  floor_mat_type: (row) => row.floor_mat_type,
   sku: (row) => row.sku,
   west: (row) => row.west_stock,
   east: (row) => row.east_stock,
