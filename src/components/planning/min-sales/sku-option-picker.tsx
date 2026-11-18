@@ -49,12 +49,18 @@ export function SkuOptionPicker<T extends BaseSkuOption = SkuOption>({
   disabled,
   endpoint = MIN_SALES_ENDPOINT,
   renderRegistered,
+  listId = "min-sales-sku-list",
+  placeholder,
 }: {
   value: T | null;
   onChange: (next: T | null) => void;
   disabled?: boolean;
   endpoint?: string;
   renderRegistered?: (option: T) => ReactNode;
+  /** DOM id of the option list; set it when a page shows more than one picker. */
+  listId?: string;
+  /** Shown while closed with nothing chosen. */
+  placeholder?: string;
 }) {
   const { pick } = useI18n();
   const registeredBadge = (option: T): ReactNode => {
@@ -145,11 +151,11 @@ export function SkuOptionPicker<T extends BaseSkuOption = SkuOption>({
           value={open ? search : value?.masterSku ?? ""}
           placeholder={open
             ? pick("SKU 또는 제품명 검색...", "Search SKU or product...")
-            : pick("클릭해서 SKU 선택...", "Click to select a SKU...")}
+            : placeholder ?? pick("클릭해서 SKU 선택...", "Click to select a SKU...")}
           disabled={disabled}
           role="combobox"
           aria-expanded={open}
-          aria-controls="min-sales-sku-list"
+          aria-controls={listId}
           aria-autocomplete="list"
           autoComplete="off"
           onChange={(event) => {
@@ -196,7 +202,7 @@ export function SkuOptionPicker<T extends BaseSkuOption = SkuOption>({
       {open ? (
         <div
           ref={listRef}
-          id="min-sales-sku-list"
+          id={listId}
           role="listbox"
           className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 min-w-[360px] overflow-y-auto rounded-md border border-[#e2dfd8] bg-white shadow-lg"
         >

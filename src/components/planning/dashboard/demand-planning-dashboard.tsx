@@ -70,6 +70,8 @@ import {
   normalizeColumnFilterMenuSize,
   skuFilterKeysForProduct,
   skuPartsForRow,
+  cellColorOverridesForColumns,
+  clearCellColorOverridesForColumns,
 } from "./columns";
 import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, DashboardFiltersState, FloorMatType, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -2299,13 +2301,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const handleColumnColorChange = useCallback((columnIds: string[], target: "cell" | "header", color: string) => {
-    formatHistoryRecorderRef.current?.(columnIds.map((columnId) => ({
+    const columnChanges: PlanningFormatHistoryChange[] = columnIds.map((columnId) => ({
       kind: "column-background" as const,
       columnId,
       target,
       before: columnColors[columnId]?.[target] ?? null,
       after: color,
-    })));
+    }));
+    const clearedCellChanges: PlanningFormatHistoryChange[] = target === "cell"
+      ? cellColorOverridesForColumns(cellColors, columnIds).map(([key, before]) => ({
+          kind: "cell-background" as const,
+          key,
+          before,
+          after: null,
+        }))
+      : [];
+    formatHistoryRecorderRef.current?.([...columnChanges, ...clearedCellChanges]);
     setColumnColors((current) => {
       const next = { ...current };
       for (const id of columnIds) {
@@ -2314,7 +2325,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [columnColors]);
+    if (target === "cell" && clearedCellChanges.length) {
+      setCellColors((current) => {
+        const next = clearCellColorOverridesForColumns(current, columnIds);
+        if (Object.keys(next).length) window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
+        else window.localStorage.removeItem(CELL_COLORS_STORAGE_KEY);
+        return next;
+      });
+    }
+  }, [cellColors, columnColors]);
 
   const handleGridColumnSelect = useCallback((columnId: string, additive: boolean, selection?: string[]) => {
     setActiveColorTarget("headers");

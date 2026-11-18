@@ -71,8 +71,15 @@ export interface DemandRow {
    * design.
    */
   rolled_up_from?: string[];
-  /** Car Cover Fabric 03 -BK: the -GR SKU whose sales (30%) this row is planned on when higher than its own. */
+  /**
+   * The SKU whose sales this row is planned on when a share of them is higher
+   * than its own: the reference registered on the Min Sales page, or for a Car
+   * Cover Fabric 03 -BK without one, the matching -GR. Set only when the
+   * reference row is on the grid.
+   */
   sales_reference_sku?: string;
+  /** Percent of the reference SKU's sales applied (30 = 30%). */
+  sales_reference_pct?: number;
   /** Per-warehouse figures are null on a historical (As of) view: the
    *  inventory history carries SKU totals only, so there is nothing to split
    *  them by. total_stock stays populated. */

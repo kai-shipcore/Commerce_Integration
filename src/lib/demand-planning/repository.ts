@@ -16,6 +16,7 @@ import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
+import type { ColorReferenceRule, ColorRuleCategory } from "@/lib/planning/reference-sales";
 
 function primary(): Pool {
   return getPrimaryPool();
@@ -293,6 +294,8 @@ export const DemandPlanningRepository = {
       p.total_avg_real_override::float8 AS total_avg_real_override,
       p.total_avg_curr_override::float8                    AS total_avg_curr_override,
       ms.min_total_avg_curr::float8                        AS total_avg_curr_min,
+      ms.reference_sku                                     AS sales_reference_sku,
+      ms.reference_pct::float8                             AS sales_reference_pct,
       rs.target_inv_life_days                              AS replacing_soon_days,
       rs.replacement_sku                                   AS replacing_soon_replacement_sku,
       rs.note                                              AS replacing_soon_note,
@@ -357,6 +360,23 @@ export const DemandPlanningRepository = {
       GROUP BY s.master_sku, s.source_type
     `, categoryParams);
     return result.rows;
+  },
+
+  /** Colour rules from the Min Sales page: a colour planned on a share of another colour's sales. */
+  async getSalesReferenceColorRules(): Promise<ColorReferenceRule[]> {
+    const result = await primary().query<{
+      category_code: ColorRuleCategory; material: string; color: string; reference_color: string; reference_pct: number;
+    }>(
+      `SELECT category_code, material, color, reference_color, reference_pct::float8 AS reference_pct
+       FROM shipcore.fc_sales_reference_color_rules`,
+    );
+    return result.rows.map((row) => ({
+      categoryCode: row.category_code,
+      material: row.material || null,
+      color: row.color,
+      referenceColor: row.reference_color,
+      pct: Number(row.reference_pct),
+    }));
   },
 
   async getLastSync(): Promise<string | null> {

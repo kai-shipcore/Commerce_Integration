@@ -28,7 +28,7 @@ import {
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { toFinalMasterSku } from "@/lib/planning/master-sku";
-import { fabric03ReferenceSku, withReferenceSales } from "@/lib/planning/car-cover-reference-sales";
+import { colorRuleReference, withReferenceSales, type SalesReference } from "@/lib/planning/reference-sales";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
@@ -212,7 +212,7 @@ export const DemandPlanningService = {
 
     const filters = { mode: query.mode, categoryCodes: query.categoryCodes, inboundStatuses };
 
-    const [containersResult, rowsResult, availStockResult, lastSync, salesSyncedAt, invSnapshotRows, invCoverage, velocityMinDate] = await Promise.all([
+    const [containersResult, rowsResult, availStockResult, lastSync, salesSyncedAt, invSnapshotRows, invCoverage, velocityMinDate, colorReferenceRules] = await Promise.all([
       DemandPlanningRepository.getContainerHeaders(query.categoryCodes),
       DemandPlanningRepository.getStatsRows(filters),
       DemandPlanningRepository.getAvailableStockTotals(query.categoryCodes),
@@ -225,6 +225,7 @@ export const DemandPlanningService = {
       // just loses the corresponding half of its lower bound.
       DemandPlanningRepository.getInventoryHistoryCoverage().catch(() => null),
       DemandPlanningRepository.getVelocityHistoryMinDate().catch(() => null),
+      DemandPlanningRepository.getSalesReferenceColorRules(),
     ]);
 
     const containerIds = containersResult.map((r) => r.id);
@@ -487,14 +488,23 @@ export const DemandPlanningService = {
 
       const vel = velEntryFor(r, masterSku);
       const contributed = rollupWindows.get(masterSku);
-      // Car Cover Fabric 03 -BK: each figure is the higher of its own and 30%
-      // of the matching -GR SKU's (see car-cover-reference-sales.ts). The GR
-      // row has to be on the grid; an inactive or filtered-out one gives nothing.
-      const referenceSku = fabric03ReferenceSku(masterSku);
+      // Reference sales: each figure is the higher of the SKU's own and a share
+      // of the same figure on its reference SKU (see reference-sales.ts). A
+      // reference registered for this SKU on the Min Sales page comes first,
+      // then the colour rules. The reference is read at its own sales, never at
+      // what it references in turn, and its row has to be on the grid: an
+      // inactive or filtered-out one gives nothing.
+      const registeredReferenceSku = typeof r.sales_reference_sku === "string" ? r.sales_reference_sku : null;
+      const registeredReferencePct = Number(r.sales_reference_pct);
+      const reference: SalesReference | null =
+        registeredReferenceSku !== null && Number.isFinite(registeredReferencePct) && registeredReferencePct > 0
+          ? { referenceSku: registeredReferenceSku, pct: registeredReferencePct }
+          : colorRuleReference(masterSku, colorReferenceRules);
+      const referenceSku = reference && reference.referenceSku !== masterSku ? reference.referenceSku : null;
       const referenceRow = referenceSku ? rowBySku.get(referenceSku) : undefined;
       const ownSales = combinedSalesFor(r, masterSku);
       const sales: SalesWindows = referenceRow
-        ? withReferenceSales(ownSales, combinedSalesFor(referenceRow, referenceSku!), SALES_AVERAGE_KEYS)
+        ? withReferenceSales(ownSales, combinedSalesFor(referenceRow, referenceSku!), SALES_AVERAGE_KEYS, reference!.pct)
         : ownSales;
 
       const west_90d = sales.west_90d;
@@ -684,7 +694,7 @@ export const DemandPlanningService = {
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
-        ...(referenceRow ? { sales_reference_sku: referenceSku! } : {}),
+        ...(referenceRow ? { sales_reference_sku: referenceSku!, sales_reference_pct: reference!.pct } : {}),
         west_stock: warehouseStock(stock.west_stock),
         east_stock: warehouseStock(stock.east_stock),
         west_available_stock: warehouseStock(stock.west_available_stock),
