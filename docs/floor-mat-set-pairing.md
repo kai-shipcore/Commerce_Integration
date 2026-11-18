@@ -74,8 +74,9 @@ Incoming container units are treated as arriving at **Dtrans**.
 
 Code: `src/lib/planning/floor-mat-pairing.ts` (`computeFloorMatPairing`).
 
-1. **Who takes part.** Only masters with both a Front and a Rear SKU. The 3rd Row is never
-   paired. A component that is inactive or missing from SKU Master counts as zero stock.
+1. **Who takes part.** Masters with both a Front and a Rear SKU, and front-only masters
+   (rule 9). The 3rd Row is never paired. A component that is inactive or missing from
+   SKU Master counts as zero stock.
 2. **Order.** Masters are served in descending ADS (`T.Avg` current). Ties keep list order.
 3. **Stages.** Stage 0 is current stock. Then one stage per incoming container, in ETA
    order. Every container is a stage, not only FM02 / FM03.
@@ -90,6 +91,14 @@ Code: `src/lib/planning/floor-mat-pairing.ts` (`computeFloorMatPairing`).
 8. **Which warehouses.** Each added pair is drawn in this fixed order: same-location first
    (Primary–Primary, Dtrans–Dtrans, East–East), then split routes Front–Rear:
    P–D, P–E, D–P, D–E, E–P, E–D. A split pair needs consolidating before it can ship.
+9. **Front-only masters** (a Front SKU and no Rear SKU; team rule of 2026-11-17).
+   - *No other master uses that front:* every front unit is a complete set. Current Pairs
+     = front stock; Pairs after a container = front stock + usable arrivals up to it. Each
+     unit counts under Full Sets of the warehouse it is in, arrivals under Dtrans. Never
+     split. Loose Sets On Hand and Loose Sets Ordered follow as for any other master.
+     Example: `CA-FM-80-FM10563`, front `CA-FM-TX-80-C1-CD-XL01` with 7 units → 7.
+   - *Another master uses the same front* (as its Front or Rear): the front-only master
+     gets no sets, and the pairing columns stay blank for it.
 
 ## 6. Dashboard columns
 
@@ -130,6 +139,26 @@ Not shown, by the team's decision: `Sets Allocated`, `Order (FM03)`.
   their live back order, because their shortfall is already counted on the set.
 - Pairing reruns in the grid when a container quantity is edited on screen.
 
+### Con. Qty and Rem. Qty (Floor Mat rows only)
+
+A container item's quantity is new production plus the remaining / mistake stock used in
+that container. Remaining stock is used first, automatically. For Floor Mat rows the two
+are shown apart (team decision of 2026-11-17); other categories are unchanged.
+
+| Column | Floor Mat | Other categories |
+|---|---|---|
+| Con. Qty | New production only. Blank when the whole quantity is remaining stock. | New production + remaining stock used |
+| Rem. Qty (each container) | Remaining stock used in that container | Remaining stock not used anywhere, same in every container |
+| Rem. Qty (Base) | Blank. Unused remaining stock is on Available Stock Management. | Remaining stock not used anywhere |
+
+- Con. Qty + Rem. Qty = the item quantity. CBM, Avail Qty and everything after them use
+  that total, so they do not change. Example: 30 in a container, 5 from remaining stock →
+  Con. Qty 25, Rem. Qty 5.
+- A number typed into Con. Qty is new production; the remaining stock already used in the
+  container stays. Clearing Con. Qty leaves the remaining stock in the container.
+- Remaining stock is still taken first: with 7 unused and an empty cell, typing 10 gives
+  Con. Qty 3 and Rem. Qty 7. Rem. Qty is not editable.
+
 ## 8. Auto order
 
 - Runs for `1+2 Set` and `3rd Row` only (plus the existing Original / Custom).
@@ -142,15 +171,15 @@ Not shown, by the team's decision: `Sets Allocated`, `Order (FM03)`.
 - **As of (historical) view:** no pairing. Per-warehouse stock is not known for a past date.
 - **Container timeline page and the legacy grid** (`/planning/dashboard`): Loose Sets
   Ordered is not added to Avail Qty there. The AG Grid dashboard is the reference.
+- **Legacy grid** (`/planning/dashboard`): shows the Con. Qty / Rem. Qty split but still
+  takes a typed Con. Qty as the item total. Edit Floor Mat quantities in the AG Grid.
 - **Column settings list** shows the four floor mat container sub-columns for other
   categories too; the grid itself does not.
 
 ## 10. Open items (as of 2026-11-17)
 
-- Remaining stock: show per-container allocation under Rem. Qty instead of Con. Qty, and
-  deleting allocated entries from the Remaining List — waiting for the team's confirmation.
-- The team announced a change to how individual front rows are allocated as loose sets;
-  details not received yet. Rules 5–7 above may change.
+- Deleting a Remaining List entry that is already used in a non-Draft container: still
+  blocked; the team has not said which SKU they were trying to remove.
 - Final logic sign-off by the team after they finish entering all SKUs.
 
 ## 11. Where the code is

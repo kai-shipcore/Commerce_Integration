@@ -92,13 +92,53 @@ describe("pairs per stage (X / Y / Z)", () => {
     expect(row.added).toEqual([3, 2, 1]); // Loose Sets On Hand 3, Ordered 2 (FM02) and 1 (FM03)
   });
 
-  it("gives a master with no rear, or no components, zero pairs", () => {
+  it("gives a master with no components zero pairs", () => {
+    const result = run([master("NONE", null, null, 1)], {});
+    expect(result.masters.get("NONE")).toMatchObject({ pairable: false, frontOnly: false, pairs: [0, 0, 0] });
+  });
+
+  it("counts every front unit of a front-only master as a set when no other master uses the front", () => {
+    // CA-FM-80-FM10563: front CA-FM-TX-80-C1-CD-XL01, 7 units at Dtrans, no rear.
+    const result = run([master("FM10563", "C1-CD-XL01", null, 0.2)], { "C1-CD-XL01": { dtrans: 7 } });
+    const row = result.masters.get("FM10563")!;
+
+    expect(row).toMatchObject({ pairable: true, frontOnly: true, frontStock: 7, rearStock: null });
+    expect(row.pairs).toEqual([7, 7, 7]); // Current pairs, Pairs after FM02, Pairs after FM03
+    expect(row.fullSets).toEqual({ primary: 0, dtrans: 7, east: 0 });
+    expect(row.splitAdded).toEqual([0, 0, 0]);
+    expect(row).toMatchObject({ lostFront: 0, lostRear: 0, freeFront: 7, freeRear: 0, frontNeeded: null, rearNeeded: null, gap: null });
+  });
+
+  it("puts a front-only unit in the Full Sets column of the warehouse it is in", () => {
+    const result = run([master("M", "F", null, 1)], { F: { primary: 2, dtrans: 3, east: 4 } });
+    expect(result.masters.get("M")!.fullSets).toEqual({ primary: 2, dtrans: 3, east: 4 });
+  });
+
+  it("adds a front-only master's usable arrivals container by container, landing at Dtrans", () => {
+    // P + T, then P + T + V. The front's backorder comes out of the first order.
+    const result = run([master("M", "F", null, 1)], { F: { east: 5, backorder: 1 } }, [{ F: 3 }, { F: 4 }]);
+    const row = result.masters.get("M")!;
+    expect(row.frontArrivals).toEqual([2, 4]);
+    expect(row.pairs).toEqual([5, 7, 11]);
+    expect(row.added).toEqual([5, 2, 4]);
+    expect(row.fullSets).toEqual({ primary: 0, dtrans: 6, east: 5 });
+    expect(result.components.get("F")!.pairings).toEqual([[{ masterSku: "M", qty: 2 }], [{ masterSku: "M", qty: 4 }]]);
+  });
+
+  it("gives a front-only master nothing when another set uses the same front", () => {
     const result = run(
-      [master("FRONT-ONLY", "F", null, 2), master("NONE", null, null, 1)],
-      { F: { east: 9 } }
+      [master("FRONT-ONLY", "F", null, 2), master("PAIRED", "F", "R", 1)],
+      { F: { east: 9 }, R: { east: 4 } }
     );
-    expect(result.masters.get("FRONT-ONLY")).toMatchObject({ pairable: false, pairs: [0, 0, 0], frontStock: 9, rearStock: null });
-    expect(result.masters.get("NONE")).toMatchObject({ pairable: false, pairs: [0, 0, 0] });
+    expect(result.masters.get("FRONT-ONLY")).toMatchObject({ pairable: false, frontOnly: false, pairs: [0, 0, 0], frontStock: 9 });
+    // The paired set is not affected by the front-only one above it.
+    expect(result.masters.get("PAIRED")!.pairs).toEqual([4, 4, 4]);
+  });
+
+  it("gives nothing to two front-only masters that share the front", () => {
+    const result = run([master("A", "F", null, 2), master("B", "F", null, 1)], { F: { east: 9 } });
+    expect(result.masters.get("A")!.pairs).toEqual([0, 0, 0]);
+    expect(result.masters.get("B")!.pairs).toEqual([0, 0, 0]);
   });
 
   it("works with no containers and with more than two", () => {

@@ -12,6 +12,10 @@ import {
   DEFAULT_FREEZE,
   freezeColumnAfterHiding,
   CON_SUBCOLS,
+  conQtyShown,
+  conQtyTotalFor,
+  remQtyShown,
+  splitsRemainingFromConQty,
   FLOOR_MAT_COLUMN_IDS,
   conSubColumnAppliesToCategories,
   columnAppliesToCategories,
@@ -690,5 +694,47 @@ describe("viewStateSubset", () => {
 
   it("takes nothing for no keys", () => {
     expect(viewStateSubset(blob, [])).toEqual({});
+  });
+});
+
+describe("Con. Qty / Rem. Qty split (Floor Mat)", () => {
+  const fm = { sku: "CA-FM-80-FM10563", category_code: "FM", remaining: 4, mistake: 1 } as unknown as DemandRow;
+  const sc = { sku: "CA-SC-10-F-10-BK-1TO", category_code: "SC", remaining: 4, mistake: 1 } as unknown as DemandRow;
+  const cell = (inbound_qty: number | null, allocated_remaining_qty: number | null) =>
+    ({ inbound_qty, allocated_remaining_qty }) as never;
+  const container = { name: "FM02", status: "draft" } as never;
+  const base = { name: "Base", status: "baseline" } as never;
+  const sub = (id: string) => CON_SUBCOLS.find((column) => column.id === id)!;
+
+  it("shows new production under Con. Qty and the remaining stock used there under Rem. Qty", () => {
+    // The team's example: 30 in the container, 5 of them from remaining stock.
+    expect(sub("inb_qty").val(cell(30, 5), container, fm)).toBe(25);
+    expect(sub("remaining").val(cell(30, 5), container, fm)).toBe(5);
+    expect(conQtyShown(fm, { inbound_qty: 30, allocated_remaining_qty: 5 }) + remQtyShown(fm, { inbound_qty: 30, allocated_remaining_qty: 5 }, false)).toBe(30);
+  });
+
+  it("leaves Con. Qty blank when the whole quantity comes from remaining stock", () => {
+    expect(sub("inb_qty").val(cell(7, 7), container, fm)).toBe("");
+    expect(sub("remaining").val(cell(7, 7), container, fm)).toBe(7);
+  });
+
+  it("shows no Rem. Qty under Base, or in a container that uses none", () => {
+    expect(sub("remaining").val(cell(null, null), base, fm)).toBe("");
+    expect(sub("remaining").val(cell(10, 0), container, fm)).toBe("");
+    expect(sub("inb_qty").val(cell(10, 0), container, fm)).toBe(10);
+  });
+
+  it("keeps other categories as they were: the total, and the unused remaining stock in every container", () => {
+    expect(sub("inb_qty").val(cell(30, 5), container, sc)).toBe(30);
+    expect(sub("remaining").val(cell(30, 5), container, sc)).toBe(5); // 4 remaining + 1 mistake
+    expect(sub("remaining").val(cell(null, null), base, sc)).toBe(5);
+  });
+
+  it("adds the remaining stock already used to a quantity entered for Floor Mat", () => {
+    expect(splitsRemainingFromConQty(fm)).toBe(true);
+    expect(conQtyTotalFor(fm, 25, 5)).toBe(30);
+    expect(conQtyTotalFor(fm, 0, 7)).toBe(7); // clearing Con. Qty keeps the remaining stock in the container
+    expect(conQtyTotalFor(fm, 10, 0)).toBe(10);
+    expect(conQtyTotalFor(sc, 25, 5)).toBe(25);
   });
 });

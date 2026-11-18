@@ -27,6 +27,10 @@ import {
   DEFAULT_HEADER_HEIGHT,
   COLUMN_WIDTHS_STORAGE_KEY,
   CON_SUBCOLS,
+  conQtyShown,
+  conQtyTotalFor,
+  remQtyShown,
+  splitsRemainingFromConQty,
   GROUP_LABELS,
   TINT_COLORS,
   getPlanningAnchor,
@@ -4560,14 +4564,18 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // calc. "Rem. Qty" reads the ROW rather than the container on purpose —
   // that matches its cell renderer in columns.ts, which does the same.
   const containerSubColumnValue = useCallback((containerName: string, subId: string, row: DemandRow): unknown => {
-    if (subId === "remaining") return (row.remaining ?? 0) + (row.mistake ?? 0);
     const key = `${row.sku}::${containerName}`;
     const raw = row.containers?.[containerName];
     const chain = chainMap.get(row.sku)?.get(containerName);
     const override = qtyOverrides.get(key);
     const merged = { ...raw, ...override, ...chain };
     switch (subId) {
-      case "inb_qty": return override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
+      case "remaining": return remQtyShown(
+        row,
+        override ?? raw,
+        containers.find((container) => container.name === containerName)?.status === "baseline",
+      );
+      case "inb_qty": return conQtyShown(row, override ?? raw);
       case "oo": return Math.round(merged.open_orders || 0);
       case "avail": return merged.avail_qty ?? null;
       case "est": return Math.round(merged.est_sales ?? 0) || 0;
@@ -4583,7 +4591,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }
       default: return null;
     }
-  }, [chainMap, qtyOverrides]);
+  }, [chainMap, containers, qtyOverrides]);
 
   const formulaRows = useMemo(() => new Map(data.rows.map((row): [string, DemandRow] => [row.sku, {
     ...row,
@@ -5040,9 +5048,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         const conQty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         const cbmUnit = override?.cbm_unit ?? raw?.cbm_unit ?? row.cbm_per_unit ?? 0;
         containerTotals.ccbm! += conQty * cbmUnit;
-        containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
-        containerTotals.remaining! += row.remaining ?? 0;
-        containerTotals.mistake! += row.mistake ?? 0;
+        // What the cells show: for Floor Mat, new production under Con. Qty and
+        // the remaining stock used here under Rem. Qty.
+        containerTotals.inb_qty! += conQtyShown(row, override ?? raw);
+        if (splitsRemainingFromConQty(row)) {
+          containerTotals.remaining! += remQtyShown(row, override ?? raw, container.status === "baseline");
+        } else {
+          containerTotals.remaining! += row.remaining ?? 0;
+          containerTotals.mistake! += row.mistake ?? 0;
+        }
         containerTotals.oo! += derived?.open_orders ?? raw?.open_orders ?? 0;
         containerTotals.avail! += derived?.avail_qty ?? override?.avail_qty ?? raw?.avail_qty ?? 0;
         containerTotals.carry! += derived?.carryover ?? raw?.carryover ?? 0;
@@ -5716,8 +5730,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         const containerName = columnId.slice(0, -"::inb_qty".length);
         const raw = row.containers?.[containerName];
         const override = qtyOverridesRef.current.get(`${row.sku}::${containerName}`);
-        const qty = override !== undefined ? override.inbound_qty : raw?.inbound_qty;
-        return qty != null ? String(qty) : "";
+        const cell = override ?? raw;
+        if (cell?.inbound_qty == null) return "";
+        // The number the cell shows, so a copy pastes back as the same entry.
+        return String(conQtyShown(row, cell));
       }
     }
     // Ask the grid for the value before reading the DOM: only rendered rows
@@ -6037,13 +6053,18 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     row: DemandRow,
     container: ContainerMeta,
     raw: ContainerRowData,
-    nextQty: number,
+    // The number entered in the Con. Qty cell. For Floor Mat that is new
+    // production only; the remaining stock already used in this container
+    // stays, so the item total (nextQty below) is the two together.
+    enteredQty: number,
     options: { recordHistory?: boolean } = {},
   ) => {
     if (!canEditPlanning) return false;
-    if (!Number.isFinite(nextQty) || nextQty < 0 || !container.container_id) return false;
+    if (!Number.isFinite(enteredQty) || enteredQty < 0 || !container.container_id) return false;
     const key = `${row.sku}::${container.name}`;
     const previous = qtyOverridesRef.current.get(key);
+    const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
+    const nextQty = conQtyTotalFor(row, enteredQty, oldAllocatedQty);
     const itemId = previous !== undefined ? previous.item_id : raw.item_id ?? undefined;
     if (itemId) qtyServerItemIdsRef.current.set(key, itemId);
     const oldQty = previous !== undefined ? previous.inbound_qty ?? 0 : raw.inbound_qty ?? 0;
@@ -6053,12 +6074,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       pushSheetHistory([{
         rowId: row.sku,
         columnId: `${container.name}::inb_qty`,
-        before: String(oldQty),
-        after: String(nextQty),
+        // As shown in the cell, so undo and redo re-enter the same numbers.
+        before: String(conQtyShown(row, { inbound_qty: oldQty, allocated_remaining_qty: oldAllocatedQty })),
+        after: String(enteredQty),
       }]);
     }
 
-    const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
     const optimisticOverride: QtyOverride = {
       inbound_qty: nextQty === 0 ? null : nextQty,
       avail_qty: nextQty === 0 ? null : nextQty,
@@ -6075,7 +6096,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       computeContainerChain(row, containers, nextOverrides, seasonalFactors),
     );
     chainMapRef.current = optimisticChainMap;
-    const immediateColumns = [`${container.name}::inb_qty`];
+    const immediateColumns = [`${container.name}::inb_qty`, `${container.name}::remaining`];
     gridRef.current?.api.refreshCells({
       rowNodes: [gridRef.current.api.getRowNode(row.sku)].filter((node) => node !== undefined),
       columns: immediateColumns,
@@ -8062,12 +8083,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                   const override = qtyOverridesRef.current.get(key);
                   const merged = { ...raw, ...override, ...chain };
                   if (column.id === "life") return merged.inv_life ?? -1;
-                  if (column.id === "inb_qty") return override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
+                  if (column.id === "inb_qty") return conQtyShown(node.data, override ?? raw);
                   if (column.id === "avail") return merged.avail_qty ?? -1;
                   if (column.id === "est") return merged.est_sales ?? -1;
                   if (column.id === "cbo") return merged.backorder ?? -1;
                   if (column.id === "carry") return merged.carryover ?? -1;
-                  if (column.id === "remaining") return (raw as { remaining?: number })?.remaining ?? -1;
+                  if (column.id === "remaining") return remQtyShown(node.data, override ?? raw, container.status === "baseline");
                   return -1;
                 };
                 return getNum(nodeA) - getNum(nodeB);

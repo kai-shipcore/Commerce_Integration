@@ -1299,15 +1299,67 @@ export function loadSavedCellColors(): CellColorSettings {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Con. Qty / Rem. Qty split (Floor Mat) ────────────────────────────────────
+//
+// A container item's quantity is new production plus the remaining / mistake
+// stock allocated to it (remaining stock is used first, automatically). For
+// Floor Mat rows the two are shown apart, as on the planning sheet: Con. Qty is
+// new production only and the container's Rem. Qty is the remaining stock used
+// in that container. The two add up to the item quantity, so CBM, Avail Qty and
+// everything downstream are unchanged. Other categories keep the single total
+// in Con. Qty and the unallocated remaining stock in Rem. Qty.
+// (Planning team request, confirmed 2026-11-17: Floor Mat only.)
+
+export function splitsRemainingFromConQty(row: Pick<DemandRow, "sku" | "category_code">): boolean {
+  return baseCategoryForRow(row) === "fm";
+}
+
+type ConQtyParts = { inbound_qty?: number | null; allocated_remaining_qty?: number | null };
+
+/** The number the Con. Qty cell shows and takes: new production for Floor Mat, the item total otherwise. */
+export function conQtyShown(row: Pick<DemandRow, "sku" | "category_code">, cell: ConQtyParts | undefined): number {
+  const total = cell?.inbound_qty ?? 0;
+  return splitsRemainingFromConQty(row) ? Math.max(0, total - (cell?.allocated_remaining_qty ?? 0)) : total;
+}
+
+/** The item total behind a number entered in Con. Qty: for Floor Mat, the remaining stock already used here stays. */
+export function conQtyTotalFor(
+  row: Pick<DemandRow, "sku" | "category_code">,
+  enteredQty: number,
+  allocatedRemainingQty: number,
+): number {
+  return splitsRemainingFromConQty(row) ? enteredQty + Math.max(0, allocatedRemainingQty) : enteredQty;
+}
+
+/**
+ * The number a container's Rem. Qty cell shows. Floor Mat: the remaining stock
+ * used in that container, and nothing under Base (unused remaining stock is on
+ * the Available Stock Management page). Otherwise: the SKU's unused remaining
+ * and mistake stock, the same in every container.
+ */
+export function remQtyShown(
+  row: Pick<DemandRow, "sku" | "category_code" | "remaining" | "mistake">,
+  cell: ConQtyParts | undefined,
+  isBaseline: boolean,
+): number {
+  if (splitsRemainingFromConQty(row)) return isBaseline ? 0 : Math.max(0, cell?.allocated_remaining_qty ?? 0);
+  return (row.remaining ?? 0) + (row.mistake ?? 0);
+}
+
 export const CON_SUBCOLS: ConSubColDef[] = [
   { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd, _c, row) => {
     const qty = cd.inbound_qty ?? 0;
     const cbmUnit = row?.cbm_per_unit ?? 0;
     return qty && cbmUnit ? (Math.round(qty * cbmUnit * 100) / 100).toFixed(2) : "";
   } },
-  { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
-  { id: "remaining", label: "Rem. Qty",    w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => {
-    const total = (row.remaining ?? 0) + (row.mistake ?? 0);
+  { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd, _c, row) => {
+    if (cd.inbound_qty === null || cd.inbound_qty === undefined) return "";
+    // Floor Mat with nothing newly produced: blank, the quantity is under Rem. Qty.
+    if (row && splitsRemainingFromConQty(row)) return conQtyShown(row, cd) || "";
+    return cd.inbound_qty;
+  } },
+  { id: "remaining", label: "Rem. Qty",    w: 54, align: "num", tint: "t-cn",      val: (cd, container, row) => {
+    const total = remQtyShown(row, cd, container.status === "baseline");
     return total > 0 ? total : "";
   } },
   // Floor mat only (CATEGORY_SCOPED_CON_SUBCOLS). On a master row: the sets its

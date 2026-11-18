@@ -21,8 +21,13 @@
  *    container first, before any of that order can form a pair. It is not
  *    taken out of on-hand stock.
  *  - Each unit of a component is reserved once across all masters.
- *  - The 3rd Row is not part of pairing. A master with no Rear SKU gets no
- *    pairs.
+ *  - The 3rd Row is not part of pairing.
+ *  - A master with a Front SKU and no Rear SKU is sold as the front alone.
+ *    When no other master uses that front, every unit of it is a complete
+ *    set: stock now, plus each container's usable arrival. When another
+ *    master uses the front as well, the front-only master gets no sets, since
+ *    the units cannot be told apart from the ones the other master pairs.
+ *    (Team rule of 2026-11-17; the sheet's COUNTIF(front) = 1 branch.)
  *
  * Warehouses: the sheet's three locations are Primary (Fullerton), Dtrans
  * (Dream Trans) and East (TTM Group + TTM Group Jefferson). Stock anywhere
@@ -84,8 +89,16 @@ export interface MasterPairing {
   masterSku: string;
   frontSku: string | null;
   rearSku: string | null;
-  /** False for a master without both components: it takes no part in pairing. */
+  /**
+   * True for a master that gets sets: one with both components, or a
+   * front-only master (see frontOnly). False otherwise; its figures are zero.
+   */
   pairable: boolean;
+  /**
+   * True for a master with a Front SKU, no Rear SKU, and a front no other
+   * master uses: each front unit counts as one complete set.
+   */
+  frontOnly: boolean;
   /** Component stock at the three pairing locations; null when not linked. */
   frontStock: number | null;
   rearStock: number | null;
@@ -195,6 +208,17 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
       })
     );
   }
+  // A front with no rear counts as sets only when this master is the sole
+  // user of that front.
+  const usesBySku = new Map<string, number>();
+  for (const master of masters) {
+    for (const sku of new Set([master.frontSku, master.rearSku])) {
+      if (sku) usesBySku.set(sku, (usesBySku.get(sku) ?? 0) + 1);
+    }
+  }
+  const isFrontOnly = (master: { frontSku: string | null; rearSku: string | null }) =>
+    Boolean(master.frontSku && !master.rearSku && usesBySku.get(master.frontSku) === 1);
+
   const totalStock = (sku: string) => {
     const s = stock.get(sku)!;
     return s.primary + s.dtrans + s.east;
@@ -208,6 +232,15 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
   // previous stage (protected, including masters further down the list), plus
   // what earlier masters added in the current stage.
   const reserved = new Map<string, number>();
+
+  // Front-only masters share their front with nobody, so there is nothing to
+  // reserve: every unit on hand or usably arrived by a stage is a set.
+  masters.forEach((master, index) => {
+    if (!isFrontOnly(master)) return;
+    for (let stage = 0; stage < stageCount; stage += 1) {
+      pairsByMaster[index][stage] = totalStock(master.frontSku!) + usableThrough(master.frontSku!, stage);
+    }
+  });
 
   for (let stage = 0; stage < stageCount; stage += 1) {
     reserved.clear();
@@ -244,6 +277,16 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
       for (const sku of componentSkus) pool.get(sku)!.dtrans += usable.get(sku)![stage - 1] ?? 0;
     }
     masters.forEach((master, index) => {
+      if (isFrontOnly(master)) {
+        // Complete where it stands: recorded on the same-location routes.
+        const front = pool.get(master.frontSku!)!;
+        PAIRING_ROUTES.forEach((route, routeIndex) => {
+          if (route.front !== route.rear) return;
+          routesByMaster[index][stage][routeIndex] = front[route.front];
+          front[route.front] = 0;
+        });
+        return;
+      }
       if (!master.frontSku || !master.rearSku) return;
       let target = pairsByMaster[index][stage] - (stage > 0 ? pairsByMaster[index][stage - 1] : 0);
       const front = pool.get(master.frontSku)!;
@@ -275,7 +318,8 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
   const firstWithRear = new Set<string>();
 
   masters.forEach((master, index) => {
-    const pairable = Boolean(master.frontSku && master.rearSku);
+    const frontOnly = isFrontOnly(master);
+    const pairable = frontOnly || Boolean(master.frontSku && master.rearSku);
     const pairs = pairsByMaster[index];
     const routes = routesByMaster[index];
     const fullSets = zeroLocations();
@@ -305,7 +349,10 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
     let freeRear = 0;
     let frontNeeded: number | null = null;
     let rearNeeded: number | null = null;
-    if (pairable) {
+    if (frontOnly) {
+      // Nobody else takes the front and there is no rear to be short of.
+      freeFront = totalStock(master.frontSku!) + usableThrough(master.frontSku!, finalStage);
+    } else if (pairable) {
       const final = pairs[finalStage];
       lostFront = Math.max(0, (finalByComponent.get(master.frontSku!) ?? 0) - final);
       lostRear = Math.max(0, (finalByComponent.get(master.rearSku!) ?? 0) - final);
@@ -331,6 +378,7 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
       frontSku: master.frontSku,
       rearSku: master.rearSku,
       pairable,
+      frontOnly,
       frontStock: master.frontSku ? totalStock(master.frontSku) : null,
       rearStock: master.rearSku ? totalStock(master.rearSku) : null,
       frontArrivals: master.frontSku ? [...usable.get(master.frontSku)!] : input.containers.map(() => null),
@@ -360,11 +408,12 @@ export function computeFloorMatPairing(input: FloorMatPairingInput): FloorMatPai
     });
   }
   masters.forEach((master, index) => {
-    if (!master.frontSku || !master.rearSku) return;
+    if (!master.frontSku || (!master.rearSku && !isFrontOnly(master))) return;
     for (let stage = 1; stage < stageCount; stage += 1) {
       const added = pairsByMaster[index][stage] - pairsByMaster[index][stage - 1];
       if (added <= 0) continue;
       for (const sku of new Set([master.frontSku, master.rearSku])) {
+        if (!sku) continue;
         result.components.get(sku)!.pairings[stage - 1].push({ masterSku: master.masterSku, qty: added });
       }
     }
