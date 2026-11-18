@@ -69,7 +69,12 @@ function toPayload(form: RuleForm) {
   };
 }
 
-export function ColorRulesPanel({ canEdit, canDelete }: { canEdit: boolean; canDelete: boolean }) {
+export function ColorRulesPanel({ canEdit, canDelete, onCoveredSkusChange }: {
+  canEdit: boolean;
+  canDelete: boolean;
+  /** Told how many active SKUs the rules reach in total, each time the rules load. */
+  onCoveredSkusChange?: (count: number) => void;
+}) {
   const { pick } = useI18n();
   const [rules, setRules] = useState<ColorRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +98,9 @@ export function ColorRulesPanel({ canEdit, canDelete }: { canEdit: boolean; canD
       const response = await fetch(apiPath(ENDPOINT), { cache: "no-store" });
       const json = await response.json();
       if (!response.ok || !json.success) throw new Error(json.error ?? failed);
-      setRules(json.data as ColorRule[]);
+      const loaded = json.data as ColorRule[];
+      setRules(loaded);
+      onCoveredSkusChange?.(loaded.reduce((sum, rule) => sum + rule.coverage.paired, 0));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : failed);
     } finally {

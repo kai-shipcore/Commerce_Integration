@@ -177,6 +177,8 @@ export function MinSalesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<MinSalesStatus | "all">("all");
   const [tab, setTab] = useState<PageTab>("sku");
+  // Active SKUs the colour rules reach; null until the rules have loaded.
+  const [colorRuleSkuCount, setColorRuleSkuCount] = useState<number | null>(null);
   const [form, setForm] = useState<RuleForm>({ ...EMPTY_FORM, referencePct: DEFAULT_REFERENCE_PCT });
   const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
   const [referenceOption, setReferenceOption] = useState<SkuOption | null>(null);
@@ -415,7 +417,7 @@ export function MinSalesPage() {
     : status === "override"
       ? pick("수동값 우선", "Manual override")
       : status === "reference"
-        ? pick("참조만", "Reference only")
+        ? pick("SKU별 참조만", "Per-SKU reference only")
         : pick("계산값 사용", "Calculated");
 
   const gridCols = "grid-cols-[28px_44px_minmax(190px,1.2fr)_minmax(140px,1fr)_90px_90px_minmax(210px,1.2fr)_110px_minmax(120px,1fr)_140px_110px]";
@@ -481,10 +483,19 @@ export function MinSalesPage() {
 
       <div className="flex border-b border-[#e2dfd8] px-4" role="tablist">
         <TabButton label={pick("SKU별 설정", "Per SKU")} active={tab === "sku"} onClick={() => setTab("sku")} />
-        <TabButton label={pick("색상 규칙", "Colour rules")} active={tab === "color"} onClick={() => setTab("color")} />
+        <TabButton
+          label={colorRuleSkuCount === null
+            ? pick("색상 규칙", "Colour rules")
+            : pick(`색상 규칙 (${colorRuleSkuCount} SKU)`, `Colour rules (${colorRuleSkuCount} SKUs)`)}
+          active={tab === "color"}
+          onClick={() => setTab("color")}
+        />
       </div>
 
-      {tab === "color" ? <ColorRulesPanel canEdit={canEdit} canDelete={canDelete} /> : null}
+      {/* Stays mounted so the tab can show how many SKUs the rules reach before it is opened. */}
+      <div className={tab === "color" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <ColorRulesPanel canEdit={canEdit} canDelete={canDelete} onCoveredSkusChange={setColorRuleSkuCount} />
+      </div>
 
       <div className={tab === "sku" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
       <div className="grid grid-cols-5 border-b border-[#e2dfd8] bg-[#f8f7f4]">
