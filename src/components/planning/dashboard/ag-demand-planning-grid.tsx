@@ -8396,7 +8396,14 @@ autoFilling3: autoFillingContainers3.has(container.name),
       columnKeys: columns.map((column) => column.getColId()),
       exportedRows: "filteredAndSorted",
       valueFrom: "edit",
-      processCellCallback: (params) => String(exportCellValue(params.value)),
+      processCellCallback: (params) => {
+        // The Master SKU cell carries on-screen marks after the SKU ("+" for
+        // rolled-up sales, "30d" for Replacing Soon). The workbook gets the
+        // SKU alone, as a copy does, so it can be matched against other lists.
+        const rowSku = (params.node?.data as DemandRow | undefined)?.sku;
+        if (params.column.getColId() === "sku" && rowSku) return rowSku;
+        return String(exportCellValue(params.value));
+      },
       processGroupHeaderCallback: (params) => {
         const groupId = params.columnGroup.getGroupId();
         const container = groupId.startsWith("container-")
