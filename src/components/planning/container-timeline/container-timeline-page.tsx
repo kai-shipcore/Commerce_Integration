@@ -14,6 +14,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
 import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-forecasts/types";
 import { ContainerColorPicker } from "@/components/planning/container-color-picker";
+import { addCalendarDays, localDateKey, monthGridDates } from "@/lib/planning/container-schedule-dates";
 import { CalendarEventEditorDrawer, type TimelineCalendarEvent, type TimelineCalendarEventInput } from "./calendar-event-editor-drawer";
 import { ContainerDateFieldsEditor, type ContainerDateValues } from "./container-date-fields-editor";
 
@@ -253,7 +254,7 @@ const PRODUCT_BADGE: Record<TimelineProductKey, string> = {
 
 const MS = 86_400_000;
 const toDate = (s: string) => new Date(s + "T00:00:00");
-const addDays = (d: Date, n: number) => new Date(d.getTime() + n * MS);
+const addDays = addCalendarDays;
 const diffDays = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / MS);
 const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
@@ -1916,13 +1917,10 @@ function CalendarMonthView({
   const month = calendarMonth.getMonth();
 
   // Mon-based grid: Mon=0 … Sun=6
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDOW = (firstDay.getDay() + 6) % 7; // Mon=0
-  const calStart = new Date(firstDay.getTime() - startDOW * 86_400_000);
-  const numWeeks = Math.ceil((startDOW + lastDay.getDate()) / 7);
+  const gridDates = monthGridDates(year, month);
+  const numWeeks = gridDates.length / 7;
 
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = localDateKey(today);
 
   // Build date-keyed map of containers (filtered by status)
   const containersByDate = new Map<string, Container[]>();
@@ -2026,8 +2024,8 @@ function CalendarMonthView({
           style={{ height: 148 }}
         >
           {Array.from({ length: 7 }, (_, di) => {
-            const date = new Date(calStart.getTime() + (wi * 7 + di) * 86_400_000);
-            const dateKey = date.toISOString().slice(0, 10);
+            const date = gridDates[wi * 7 + di];
+            const dateKey = localDateKey(date);
             return (
               <CalendarDayCell
                 key={di}
@@ -2079,7 +2077,7 @@ function ContainerScheduleView({
 }) {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = localDateKey(today);
 
   const rowsByDate = new Map<string, Container[]>();
   for (const container of containers) {
