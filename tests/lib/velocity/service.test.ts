@@ -26,6 +26,7 @@ const repositoryMock = {
   fetchLinkRowsFromLookup: vi.fn(),
   fetchCustomRowsFromLookup: vi.fn(),
   fetchLinkForecastRowsFromLookup: vi.fn(),
+  fetchSkuHistoryFromLookup: vi.fn(),
   upsertLinkSnapshot: vi.fn(),
   upsertCustomSnapshot: vi.fn(),
   deleteStaleSnapshots: vi.fn(),
@@ -55,6 +56,7 @@ beforeEach(() => {
   cacheManagerMock.get.mockResolvedValue(null);
   getLookupPoolMock.mockReturnValue({});
   repositoryMock.checkoutSyncClient.mockResolvedValue({ release: releaseClientMock });
+  repositoryMock.fetchSkuHistoryFromLookup.mockResolvedValue([]);
 });
 
 describe("VelocityService.getChannelVelocity", () => {
@@ -257,7 +259,7 @@ describe("VelocityService.runSync", () => {
 
     const result = await VelocityService.runSync(false);
 
-    expect(result).toEqual({ linkUpserted: 0, customUpserted: 0, linkDeleted: 0, customDeleted: 0 });
+    expect(result).toEqual({ linkUpserted: 0, customUpserted: 0, linkDeleted: 0, customDeleted: 0, skuRenames: 0 });
     expect(repositoryMock.releaseSyncLock).toHaveBeenCalled();
   });
 
@@ -283,11 +285,57 @@ describe("VelocityService.runSync", () => {
     expect(repositoryMock.upsertFbaWebSkuSnapshot).toHaveBeenCalledWith(webRows, "custom", expect.any(Date));
     expect(repositoryMock.deleteStaleFbaWebSkuSnapshot).toHaveBeenCalledWith(expect.any(Date), true);
 
-    expect(result).toEqual({ linkUpserted: 1, customUpserted: 1, linkDeleted: 2, customDeleted: 3 });
+    expect(result).toEqual({ linkUpserted: 1, customUpserted: 1, linkDeleted: 2, customDeleted: 3, skuRenames: 0 });
     expect(cacheManagerMock.delete).toHaveBeenCalledWith("oos-preorder:sku-list:v4");
     expect(cacheManagerMock.delete).toHaveBeenCalledWith("oos-recovery:sku-list");
     expect(repositoryMock.releaseSyncLock).toHaveBeenCalled();
     expect(releaseClientMock).toHaveBeenCalled();
+  });
+
+  const stubEmptySync = () => {
+    repositoryMock.tryAcquireSyncLock.mockResolvedValue(true);
+    repositoryMock.fetchLinkRowsFromLookup.mockResolvedValue([]);
+    repositoryMock.fetchCustomRowsFromLookup.mockResolvedValue([]);
+    repositoryMock.fetchLinkForecastRowsFromLookup.mockResolvedValue([]);
+    repositoryMock.fetchFbaWebSkuRowsFromLookup.mockResolvedValue([]);
+    repositoryMock.upsertLinkSnapshot.mockResolvedValue(0);
+    repositoryMock.upsertCustomSnapshot.mockResolvedValue(0);
+    repositoryMock.upsertFbaWebSkuSnapshot.mockResolvedValue(0);
+    repositoryMock.deleteStaleSnapshots.mockResolvedValue({ linkDeleted: 0, customDeleted: 0 });
+    repositoryMock.deleteStaleFbaWebSkuSnapshot.mockResolvedValue(0);
+  };
+
+  it("writes a renamed SKU's sales under its current code, added to that code's own", async () => {
+    stubEmptySync();
+    const day = new Date("2026-11-10T00:00:00Z");
+    const sale = (sku: string, qty: number) => ({
+      order_date: day, item_category: "Car Cover", channel: "Coverland B2C", order_type: "sales",
+      link_master_sku: sku, link_qty: qty, is_custom: "N",
+    });
+    repositoryMock.fetchLinkRowsFromLookup.mockResolvedValue([sale("CC-CN-15-B-BKLG-STR", 3), sale("CA-CC-15-CN-B-BKLG-STR", 4)]);
+    repositoryMock.fetchSkuHistoryFromLookup.mockResolvedValue([
+      { masterProductId: "p1", sku: "CC-CN-15-B-BKLG-STR", validFrom: "2026-01-01", validTo: "2026-11-10", currentSku: null },
+      { masterProductId: "p1", sku: "CA-CC-15-CN-B-BKLG-STR", validFrom: "2026-11-10", validTo: null, currentSku: null },
+    ]);
+
+    const result = await VelocityService.runSync(false);
+
+    expect(repositoryMock.upsertLinkSnapshot.mock.calls[0][0]).toEqual([sale("CA-CC-15-CN-B-BKLG-STR", 7)]);
+    expect(result.skuRenames).toBe(1);
+  });
+
+  it("still syncs, on the codes as ordered, when the rename history cannot be read", async () => {
+    stubEmptySync();
+    const rows = [{ link_master_sku: "A", link_qty: 1 }];
+    repositoryMock.fetchLinkRowsFromLookup.mockResolvedValue(rows);
+    repositoryMock.fetchSkuHistoryFromLookup.mockRejectedValue(new Error("permission denied for foreign table"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await VelocityService.runSync(false);
+
+    expect(repositoryMock.upsertLinkSnapshot.mock.calls[0][0]).toBe(rows);
+    expect(result.skuRenames).toBe(0);
+    warn.mockRestore();
   });
 });
 

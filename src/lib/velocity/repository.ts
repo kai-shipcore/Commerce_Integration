@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
+import type { SkuHistoryRow } from "@/lib/planning/sku-history";
 import { CacheManager } from "@/lib/redis";
 
 // ─── Shared types ───────────────────────────────────────────────────────────
@@ -1084,6 +1085,31 @@ export const VelocityRepository = {
       `${CUSTOM_SELECT} ${CUSTOM_WHERE} ${dateFilterC} GROUP BY 1, 2, 3, 4, 5, 7`
     );
     return result.rows;
+  },
+
+  // Every code each Workbench master product has had (see planning/sku-history.ts).
+  // Both tables are foreign tables onto Workbench's database; master_product
+  // gives the current code where it is readable, and the history's open row
+  // stands in where it is not.
+  async fetchSkuHistoryFromLookup(lookupPool: Pool): Promise<SkuHistoryRow[]> {
+    const result = await lookupPool.query<{
+      master_product_id: string; sku: string; valid_from: Date | null; valid_to: Date | null; current_sku: string | null;
+    }>(
+      `SELECT h.master_product_id::text AS master_product_id,
+              h.sku::text               AS sku,
+              h.valid_from,
+              h.valid_to,
+              p.sku::text               AS current_sku
+         FROM workbench_public.master_product_sku_history h
+         LEFT JOIN workbench_public.master_product p ON p.id = h.master_product_id`
+    );
+    return result.rows.map((row) => ({
+      masterProductId: row.master_product_id,
+      sku: row.sku,
+      validFrom: row.valid_from,
+      validTo: row.valid_to,
+      currentSku: row.current_sku,
+    }));
   },
 
   async upsertLinkSnapshot(

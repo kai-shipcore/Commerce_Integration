@@ -130,10 +130,37 @@ Two things were deliberately left alone:
   key: changing the rule alone would insert the same sales again under the new category
   next to the rows already stored under the old one. It needs a migration that re-keys the
   stored rows in the same release.
-- **Linking an old code to its new code**, so a renamed SKU keeps its sales history. Car
-  Cover and Floor Mat convert by rule; Steering Wheel, Neck Pillow, Towel and Windshield
-  were renumbered and need a list from the planning team. Until that exists a renamed SKU
-  starts at zero sales.
+- **Everything keyed by master SKU other than sales.** A renamed SKU gets a new
+  `fc_products` row and the old row stays, with its Min Sales registration, container
+  items, transit records and available stock still on the old code. The As-of stock
+  history is under the old code too. Nothing moves these yet.
+
+### A renamed SKU keeps its sales, through Workbench's SKU history
+
+The planning team renames a master SKU in ShipHero. Workbench records every code a product
+has had in `workbench_public.master_product_sku_history` (a foreign table in the Supabase
+lookup DB: `master_product_id`, `sku`, `valid_from`, `valid_to`), and the Velocity sync
+writes sales under the current code (`src/lib/planning/sku-history.ts`, applied in
+`VelocityService.runSync`).
+
+- **It is applied on write, not on read.** Old-code rows are rewritten and added to the
+  current code's rows before the upsert; the sync's stale-row delete then drops what was
+  stored under the old code. Every reader of `fc_velocity_*_snapshot` follows without a
+  change, and the two codes are never both counted.
+- **Only inside the sync window.** An incremental sync rebuilds the last 120 days, which
+  covers the dashboard's 96-day read-back. Rows older than that keep the old code until a
+  full sync (`POST /api/velocity/sync?full=true`), so the long-history readers
+  (SKU Forecasts, OOS Impact) see a renamed SKU's older sales under the old code until then.
+- **The current code** is `master_product.sku` when that row is readable, else the history
+  row with no `valid_to`, else the latest one. A code that is now another product's code,
+  or that two products have both had, is not folded.
+- **A history that cannot be read does not stop the sync.** It logs a warning and syncs on
+  the codes as ordered; `skuRenames` in the sync result is the number of old codes folded.
+- **Written against an empty table** (2026-11-18: both foreign tables returned 0 rows), so
+  the reading of `valid_to` above is from the column names, not from data. Check it against
+  the first real rename.
+- `item_category` still comes from the code the order carried, so a folded SKU can hold
+  rows in two categories (see Velocity's `item_category` above). Sums per SKU are right.
 
 ### The As-of date replays what there is history for, and nothing else
 

@@ -1,4 +1,5 @@
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { buildSkuAliasMap, foldRenamedSkuRows } from "@/lib/planning/sku-history";
 import {
   VelocityRepository,
   buildSyncDateFilters,
@@ -376,13 +377,23 @@ export const VelocityService = {
 
       const { dateFilter, dateFilterC } = buildSyncDateFilters(full);
 
-      const [linkRows, customRows, linkForecastRows, fbaWebLinkRows, fbaWebCustomRows] = await Promise.all([
+      const [rawLinkRows, rawCustomRows, rawLinkForecastRows, rawFbaWebLinkRows, rawFbaWebCustomRows, skuAliases] = await Promise.all([
         VelocityRepository.fetchLinkRowsFromLookup(lookupPool, dateFilter),
         VelocityRepository.fetchCustomRowsFromLookup(lookupPool, dateFilterC),
         VelocityRepository.fetchLinkForecastRowsFromLookup(lookupPool),
         VelocityRepository.fetchFbaWebSkuRowsFromLookup(lookupPool, "link", dateFilter),
         VelocityRepository.fetchFbaWebSkuRowsFromLookup(lookupPool, "custom", dateFilterC),
+        loadSkuAliases(lookupPool),
       ]);
+
+      // Sales under a code a SKU used to have are written under the code it has
+      // now. The stale-row delete below then drops the old code's rows inside
+      // the sync window, so the two are never both counted.
+      const linkRows = foldRenamedSkuRows(rawLinkRows, skuAliases, "link_master_sku", "link_qty", SNAPSHOT_IDENTITY);
+      const customRows = foldRenamedSkuRows(rawCustomRows, skuAliases, "custom_master_sku", "custom_qty", SNAPSHOT_IDENTITY);
+      const linkForecastRows = foldRenamedSkuRows(rawLinkForecastRows, skuAliases, "link_master_sku", "link_qty", SNAPSHOT_IDENTITY);
+      const fbaWebLinkRows = foldRenamedSkuRows(rawFbaWebLinkRows, skuAliases, "master_sku", "qty", FBA_WEB_SKU_IDENTITY);
+      const fbaWebCustomRows = foldRenamedSkuRows(rawFbaWebCustomRows, skuAliases, "master_sku", "qty", FBA_WEB_SKU_IDENTITY);
 
       const syncedAt = new Date();
       const [linkUpserted, customUpserted] = await Promise.all([
@@ -403,7 +414,7 @@ export const VelocityService = {
         CacheManager.delete("oos-recovery:sku-list"),
       ]);
 
-      return { linkUpserted, customUpserted, linkDeleted, customDeleted };
+      return { linkUpserted, customUpserted, linkDeleted, customDeleted, skuRenames: skuAliases.size };
     } finally {
       if (lockAcquired) {
         await VelocityRepository.releaseSyncLock(client);
@@ -414,6 +425,22 @@ export const VelocityService = {
 };
 
 // ─── Private helpers ────────────────────────────────────────────────────────
+
+// The snapshot tables' conflict keys, less the SKU column.
+const SNAPSHOT_IDENTITY = ["order_date", "item_category", "channel", "order_type"] as const;
+const FBA_WEB_SKU_IDENTITY = ["order_date", "item_category", "channel", "order_type", "web_sku"] as const;
+
+// The renamed-SKU list is Workbench's, read through a foreign table. If it
+// cannot be read the sync still runs, on the codes as the orders carry them:
+// a failed rename lookup must not stop sales from updating.
+async function loadSkuAliases(lookupPool: Pool): Promise<Map<string, string>> {
+  try {
+    return buildSkuAliasMap(await VelocityRepository.fetchSkuHistoryFromLookup(lookupPool));
+  } catch (error) {
+    console.warn("[velocity/sync] SKU rename history unavailable; syncing without it:", error);
+    return new Map();
+  }
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
