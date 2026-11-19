@@ -73,8 +73,11 @@ import {
 import { accumulatesBackorder } from "@/lib/planning/floor-mat-sets";
 import {
   buildFloorMatView,
+  countFloorMatComponentUses,
+  isSharedFloorMatComponent,
   looseSetsOrdered,
   looseSetsOrderedIsSplit,
+  setFloorMatComponentUses,
   setFloorMatView,
   type FloorMatView,
 } from "@/lib/planning/floor-mat-dashboard";
@@ -164,6 +167,8 @@ const CON_QTY_RAIL = "1px solid #5B8FC9";
 // Loose Sets Ordered when some of the sets gained in that container are split
 // between warehouses and need consolidating before they can ship.
 const LOOSE_SPLIT_FILL = "#FED7AA";
+// Front / Rear / 3rd Row SKU that more than one floor mat set uses.
+const SHARED_COMPONENT_FILL = "#FEF9C3";
 const SELECTED_CELL_FILL = "#DBEAFE";
 
 type QtyOverride = {
@@ -1426,6 +1431,26 @@ function renderCellValue(value: CellContent | undefined) {
     return <span className="planning-rendered-cell-value" dangerouslySetInnerHTML={{ __html: value.html }} />;
   }
   return <span className="planning-rendered-cell-value">{String(value)}</span>;
+}
+
+/**
+ * The quantity and the remaining stock used in a container cell, with an
+ * on-screen edit applied. An override carries the edited quantity but not
+ * always the allocation (the ones seeded from the loaded plan had none), so
+ * the allocation falls back to the stored cell; reading it from the override
+ * alone made the container totals, filter, sort and copy count remaining stock
+ * as new production (FM14841 in FM04: cell blank / 12, header total 12 / 0).
+ */
+function conQtyParts(
+  raw: { inbound_qty?: number | null; allocated_remaining_qty?: number | null } | undefined,
+  override: QtyOverride | undefined,
+): { inbound_qty: number | null; allocated_remaining_qty: number | null } {
+  return {
+    inbound_qty: override !== undefined ? override.inbound_qty : raw?.inbound_qty ?? null,
+    allocated_remaining_qty: override?.allocated_remaining_qty !== undefined
+      ? override.allocated_remaining_qty
+      : raw?.allocated_remaining_qty ?? null,
+  };
 }
 
 function exportCellValue(value: unknown): string | number | boolean {
@@ -4581,10 +4606,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     switch (subId) {
       case "remaining": return remQtyShown(
         row,
-        override ?? raw,
+        conQtyParts(raw, override),
         containers.find((container) => container.name === containerName)?.status === "baseline",
       );
-      case "inb_qty": return conQtyShown(row, override ?? raw);
+      case "inb_qty": return conQtyShown(row, conQtyParts(raw, override));
       case "oo": return Math.round(merged.open_orders || 0);
       case "avail": return merged.avail_qty ?? null;
       case "est": return Math.round(merged.est_sales ?? 0) || 0;
@@ -5064,9 +5089,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         containerTotals.ccbm! += conQty * cbmUnit;
         // What the cells show: for Floor Mat, new production under Con. Qty and
         // the remaining stock used here under Rem. Qty.
-        containerTotals.inb_qty! += conQtyShown(row, override ?? raw);
+        containerTotals.inb_qty! += conQtyShown(row, conQtyParts(raw, override));
         if (splitsRemainingFromConQty(row)) {
-          containerTotals.remaining! += remQtyShown(row, override ?? raw, container.status === "baseline");
+          containerTotals.remaining! += remQtyShown(row, conQtyParts(raw, override), container.status === "baseline");
         } else {
           containerTotals.remaining! += row.remaining ?? 0;
           containerTotals.mistake! += row.mistake ?? 0;
@@ -5164,6 +5189,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           cbm: cd.cbm ?? null,
           item_id: cd.item_id ?? undefined,
           cbm_unit: cd.cbm_unit ?? undefined,
+          allocated_remaining_qty: cd.allocated_remaining_qty ?? null,
         });
       }
     }
@@ -5216,6 +5242,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     },
   ), [containers, data.rows, qtyOverrides]);
   setFloorMatView(floorMatView);
+  const floorMatComponentUses = useMemo(() => countFloorMatComponentUses(data.rows), [data.rows]);
+  setFloorMatComponentUses(floorMatComponentUses);
   const lastChainedFloorMatViewRef = useRef<FloorMatView | null>(null);
 
   useEffect(() => {
@@ -5744,7 +5772,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         const containerName = columnId.slice(0, -"::inb_qty".length);
         const raw = row.containers?.[containerName];
         const override = qtyOverridesRef.current.get(`${row.sku}::${containerName}`);
-        const cell = override ?? raw;
+        const cell = conQtyParts(raw, override);
         if (cell?.inbound_qty == null) return "";
         // The number the cell shows, so a copy pastes back as the same entry.
         return String(conQtyShown(row, cell));
@@ -7879,6 +7907,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 ? CHANGED_ADS_FILL
               : column.id === "tavg_c" && params.data?.total_avg_curr_min_applied
                 ? MIN_SALES_APPLIED_FILL
+              : (column.id === "fm_front" && isSharedFloorMatComponent(params.data?.fm_set?.frontSku, "front"))
+                || (column.id === "fm_rear" && isSharedFloorMatComponent(params.data?.fm_set?.rearSku, "rear"))
+                // The 3rd Row cell can list several SKUs: one shared SKU marks the cell.
+                || (column.id === "fm_third" && (params.data?.fm_set?.thirdRows ?? []).some((third) => isSharedFloorMatComponent(third.sku, "third")))
+                ? SHARED_COMPONENT_FILL
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",
             fontSize: conditionalFormat?.fontSize ?? textFormat.fontSize ?? 11,
@@ -8097,12 +8130,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                   const override = qtyOverridesRef.current.get(key);
                   const merged = { ...raw, ...override, ...chain };
                   if (column.id === "life") return merged.inv_life ?? -1;
-                  if (column.id === "inb_qty") return conQtyShown(node.data, override ?? raw);
+                  if (column.id === "inb_qty") return conQtyShown(node.data, conQtyParts(raw, override));
                   if (column.id === "avail") return merged.avail_qty ?? -1;
                   if (column.id === "est") return merged.est_sales ?? -1;
                   if (column.id === "cbo") return merged.backorder ?? -1;
                   if (column.id === "carry") return merged.carryover ?? -1;
-                  if (column.id === "remaining") return remQtyShown(node.data, override ?? raw, container.status === "baseline");
+                  if (column.id === "remaining") return remQtyShown(node.data, conQtyParts(raw, override), container.status === "baseline");
                   return -1;
                 };
                 return getNum(nodeA) - getNum(nodeB);

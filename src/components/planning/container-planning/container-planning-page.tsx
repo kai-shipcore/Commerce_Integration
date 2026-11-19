@@ -134,6 +134,7 @@ type AvailableStockRow = {
   id: string;
   sourceType: StockSourceType;
   referenceNo: string;
+  plNo?: string | null;
   masterSku: string;
   totalQty: number;
   availableQty: number;
@@ -4214,6 +4215,9 @@ const statusWorkflowLabels: Record<ContainerStatus, string> = {
   complete: "Stock-in completed",
 };
 
+// Checkbox, Reference, Master SKU, Available, Load Qty, CBM, Total CBM, actions.
+const STOCK_MODAL_GRID = "grid-cols-[42px_120px_1fr_90px_100px_90px_100px_110px]";
+
 function AvailableStockModal({
   containerId,
   onAdd,
@@ -4240,6 +4244,86 @@ function AvailableStockModal({
     cbm: "",
     note: "",
   });
+  // Edit / Delete on a list entry, the same actions as the Available Stock
+  // Management page, so an entry can be corrected or removed without leaving
+  // the container. The server applies the same rules either way: an entry in
+  // use cannot be deleted, nor have its SKU or CBM changed.
+  const { can } = usePermissions();
+  const canEditStock = can("available-stock", "edit");
+  const canDeleteStock = can("available-stock", "delete");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ referenceNo: "", masterSku: "", totalQty: "", cbm: "" });
+  const [savingRow, setSavingRow] = useState(false);
+
+  function beginEdit(row: AvailableStockRow) {
+    setEditingId(row.id);
+    setEditForm({
+      referenceNo: row.referenceNo,
+      masterSku: row.masterSku,
+      totalQty: String(row.totalQty),
+      cbm: String(row.cbm),
+    });
+    setMessage("");
+  }
+
+  async function updateStock(row: AvailableStockRow) {
+    const totalQty = Number.parseInt(editForm.totalQty, 10);
+    const cbm = Number.parseFloat(editForm.cbm);
+    if (!editForm.referenceNo.trim() || !editForm.masterSku.trim() || !(totalQty > 0) || !(cbm > 0)) {
+      setMessage(pick("Reference, Master SKU, 1 이상의 수량, CBM은 필수입니다.", "Reference, Master SKU, positive quantity, and CBM are required."));
+      return;
+    }
+    setSavingRow(true);
+    setMessage("");
+    try {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: row.id,
+          sourceType: row.sourceType,
+          referenceNo: editForm.referenceNo.trim(),
+          // Not shown in this dialog: sent back unchanged so the edit keeps them.
+          plNo: row.plNo ?? "",
+          masterSku: editForm.masterSku.trim().toUpperCase(),
+          totalQty,
+          cbm,
+          note: row.note ?? "",
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 수정에 실패했습니다.", "Failed to update stock."));
+      setEditingId(null);
+      setSelectedQty((current) => ({ ...current, [row.id]: "" }));
+      setMessage(pick("사용 가능 재고가 수정되었습니다.", "Available stock updated."));
+      await loadRows();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : pick("재고 수정에 실패했습니다.", "Failed to update stock."));
+    } finally {
+      setSavingRow(false);
+    }
+  }
+
+  async function deleteStock(row: AvailableStockRow) {
+    if (!window.confirm(pick(`${row.referenceNo} / ${row.masterSku} 재고를 삭제하시겠습니까?`, `Delete ${row.referenceNo} / ${row.masterSku}?`))) return;
+    setSavingRow(true);
+    setMessage("");
+    try {
+      const response = await fetch(apiPath(`/api/container-available-stock?stockId=${encodeURIComponent(row.id)}`), {
+        method: "DELETE",
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 삭제에 실패했습니다.", "Failed to delete stock."));
+      if (editingId === row.id) setEditingId(null);
+      setSelectedQty((current) => ({ ...current, [row.id]: "" }));
+      setMessage(pick("사용 가능 재고가 삭제되었습니다.", "Available stock deleted."));
+      await loadRows();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : pick("재고 삭제에 실패했습니다.", "Failed to delete stock."));
+    } finally {
+      setSavingRow(false);
+    }
+  }
 
   async function loadRows() {
     setLoading(true);
@@ -4481,7 +4565,7 @@ function AvailableStockModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-6 pb-3">
-          <div className="grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] bg-[#f0eee9] px-3 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+          <div className={`grid ${STOCK_MODAL_GRID} bg-[#f0eee9] px-3 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground`}>
             <input
               type="checkbox"
               aria-label="Select all visible available stock"
@@ -4498,6 +4582,7 @@ function AvailableStockModal({
             <span>{pick("적재 수량", "Load Qty")}</span>
             <span>CBM</span>
             <span>{pick("총 CBM", "Total CBM")}</span>
+            <span />
           </div>
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">{pick("가용 재고 불러오는 중...", "Loading available stock...")}</div>
@@ -4506,6 +4591,25 @@ function AvailableStockModal({
           ) : (
             visibleRows.map((row) => {
               const qty = Number.parseInt(selectedQty[row.id] ?? "", 10) || 0;
+              const allocated = row.totalQty - row.availableQty;
+              if (editingId === row.id) {
+                const inputClass = "h-7 w-full rounded border border-[#cccac4] px-2 text-xs disabled:bg-[#f0eee9] disabled:text-muted-foreground";
+                return (
+                  <div key={row.id} className={`grid ${STOCK_MODAL_GRID} items-center gap-x-2 border-b border-[#e2dfd8] bg-[#f8f7f4] px-3 py-1 text-sm`}>
+                    <span />
+                    <input aria-label="Reference No." className={inputClass} value={editForm.referenceNo} onChange={(event) => setEditForm((value) => ({ ...value, referenceNo: event.target.value }))} />
+                    <input aria-label="Master SKU" className={`${inputClass} font-mono`} disabled={allocated > 0} value={editForm.masterSku} onChange={(event) => setEditForm((value) => ({ ...value, masterSku: event.target.value }))} />
+                    <input aria-label={pick("총 수량", "Total quantity")} title={pick("총 수량 (배정된 수량 포함)", "Total quantity, including units already in containers")} className={inputClass} type="number" min={Math.max(1, allocated)} value={editForm.totalQty} onChange={(event) => setEditForm((value) => ({ ...value, totalQty: event.target.value }))} />
+                    <span className="text-xs text-muted-foreground">{allocated > 0 ? pick(`배정 ${allocated}`, `${allocated} in use`) : ""}</span>
+                    <input aria-label="CBM" className={inputClass} type="number" step="0.000001" disabled={allocated > 0} value={editForm.cbm} onChange={(event) => setEditForm((value) => ({ ...value, cbm: event.target.value }))} />
+                    <span />
+                    <div className="flex gap-2">
+                      <button type="button" disabled={savingRow} onClick={() => void updateStock(row)} className="text-xs font-semibold text-[#1a5cdb] disabled:opacity-40">{pick("저장", "Save")}</button>
+                      <button type="button" disabled={savingRow} onClick={() => setEditingId(null)} className="text-xs font-semibold text-muted-foreground">{pick("취소", "Cancel")}</button>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={row.id}
@@ -4518,7 +4622,7 @@ function AvailableStockModal({
                     event.preventDefault();
                     toggleRowSelection(row);
                   }}
-                  className={`grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] items-center border-b border-[#e2dfd8] px-3 py-1 text-sm ${
+                  className={`grid ${STOCK_MODAL_GRID} items-center border-b border-[#e2dfd8] px-3 py-1 text-sm ${
                     submitting || row.availableQty <= 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-[#f8f7f4]"
                   }`}
                 >
@@ -4544,6 +4648,22 @@ function AvailableStockModal({
                   />
                   <span>{row.cbm.toFixed(6)}</span>
                   <span>{(qty * row.cbm).toFixed(2)}</span>
+                  <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
+                    {canEditStock ? (
+                      <button type="button" disabled={submitting || savingRow} onClick={() => beginEdit(row)} className="text-xs font-semibold text-[#1a5cdb] disabled:opacity-40">{pick("편집", "Edit")}</button>
+                    ) : null}
+                    {canDeleteStock ? (
+                      <button
+                        type="button"
+                        disabled={submitting || savingRow || allocated > 0}
+                        title={allocated > 0 ? pick(`컨테이너에 ${allocated}개가 배정되어 있어 삭제할 수 없습니다.`, `${allocated} units are in a container, so this entry cannot be deleted.`) : undefined}
+                        onClick={() => void deleteStock(row)}
+                        className="text-xs font-semibold text-[#c42b2b] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {pick("삭제", "Delete")}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               );
             })

@@ -184,6 +184,63 @@ export function pairsAfterContainer(sku: string, containerCode: string): number 
   return name === undefined ? null : pairsAfter(sku, name, false);
 }
 
+// ── Components shared between masters ────────────────────────────────────────
+//
+// A Front, Rear or 3rd Row SKU that more than one master set lists is
+// highlighted in its column, as on the planning sheet (conditional formatting
+// COUNTIF($O:$O, front) > 1 and COUNTIF($Q:$Q, rear) > 1). Each column is
+// counted on its own, as there: a SKU that is one master's Front and another's
+// Rear is not shared by this rule. Kept apart from the pairing view because it
+// needs no stock, so it also works on a historical (As of) view.
+//
+// A master and its `-C` counterpart are one set: `-C` is the 1+2+3 version of
+// a set that also exists as 1+2, with the same Front and Rear. So the count is
+// of distinct base sets, the master SKU without a trailing `-C` (team
+// clarification of 2026-11-19: CA-FM-TX-80-S1-BK-EN02 is the Front of
+// CA-FM-80-FM13259 and CA-FM-80-FM13259-C and of nothing else, so it is not
+// shared).
+
+export type FloorMatPiece = "front" | "rear" | "third";
+
+/** Per position: component SKU → number of distinct base sets listing it. */
+export type FloorMatComponentUses = Record<FloorMatPiece, Map<string, number>>;
+
+/** The set a master belongs to: its SKU without the `-C` (1+2+3 version) suffix. */
+export function floorMatBaseSetSku(masterSku: string): string {
+  return masterSku.trim().toUpperCase().replace(/-C$/, "");
+}
+
+/** How many base sets among `rows` list each SKU as their Front, Rear and 3rd Row. */
+export function countFloorMatComponentUses(rows: readonly DemandRow[]): FloorMatComponentUses {
+  const sets: Record<FloorMatPiece, Map<string, Set<string>>> = { front: new Map(), rear: new Map(), third: new Map() };
+  const add = (piece: FloorMatPiece, sku: string | null | undefined, baseSet: string) => {
+    if (!sku) return;
+    const users = sets[piece].get(sku);
+    if (users) users.add(baseSet);
+    else sets[piece].set(sku, new Set([baseSet]));
+  };
+  for (const row of rows) {
+    if (row.pinned || !row.fm_set) continue;
+    const baseSet = floorMatBaseSetSku(row.sku);
+    add("front", row.fm_set.frontSku, baseSet);
+    add("rear", row.fm_set.rearSku, baseSet);
+    for (const third of row.fm_set.thirdRows ?? []) add("third", third.sku, baseSet);
+  }
+  const count = (piece: FloorMatPiece) => new Map([...sets[piece]].map(([sku, users]) => [sku, users.size]));
+  return { front: count("front"), rear: count("rear"), third: count("third") };
+}
+
+let currentUses: FloorMatComponentUses | null = null;
+
+export function setFloorMatComponentUses(uses: FloorMatComponentUses | null): void {
+  currentUses = uses;
+}
+
+/** True when more than one base set lists `sku` in that position. */
+export function isSharedFloorMatComponent(sku: string | null | undefined, piece: FloorMatPiece): boolean {
+  return Boolean(sku && (currentUses?.[piece].get(sku) ?? 0) > 1);
+}
+
 export function floorMatTotalStock(sku: string): number | null {
   return currentView?.totalStockBySku.get(sku) ?? null;
 }

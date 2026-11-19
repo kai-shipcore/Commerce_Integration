@@ -178,8 +178,9 @@ are shown apart (team decision of 2026-11-17); other categories are unchanged.
 
 ## 10. Open items (as of 2026-11-17)
 
-- Deleting a Remaining List entry that is already used in a non-Draft container: still
-  blocked; the team has not said which SKU they were trying to remove.
+- Remaining List entries can be edited and deleted from the list opened in Container
+  Planning as well as on Available Stock Management (2026-11-18). An entry with units
+  in a container still cannot be deleted, on either page.
 - Final logic sign-off by the team after they finish entering all SKUs.
 
 ## 11. Where the code is
