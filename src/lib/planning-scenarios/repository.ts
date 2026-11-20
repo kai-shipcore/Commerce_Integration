@@ -293,26 +293,46 @@ export const PlanningScenarioRepository = {
   },
 
   /**
-   * Snapshots the Live plan into a scenario's overlay — how "duplicate the
-   * Live tab" gets its starting numbers. Only containers still in the inbound
-   * set are copied, matching what the grid shows as columns.
+   * Snapshots the Live plan into a scenario's overlay — how "Copy Live" gets
+   * its starting numbers. Quantities and ETAs are both frozen here: from this
+   * point the tab follows neither, and only its own edits change them.
+   *
+   * Every container the grid shows as a column is copied, drafts included
+   * (`status <> 'complete'`, the same set as
+   * `DemandPlanningRepository.getContainerHeaders`). The copy used to take
+   * shipped and packing-received containers only, so a draft column opened
+   * empty on the new tab while Live showed its quantities, and it wrote no ETA
+   * rows at all, so the tab's column order and S.O.D. kept moving with Live.
+   *
+   * A container's status is not copied: it stays Live's, so a draft promoted
+   * later shows its new status on the tab with the quantities and ETA it had
+   * when the tab was made.
    */
-  async snapshotLiveIntoScenario(
-    toScenarioId: number,
-    includeDrafts: boolean,
-    client?: Queryable,
-  ): Promise<void> {
+  async snapshotLiveIntoScenario(toScenarioId: number, client?: Queryable): Promise<void> {
     await db(client).query(
       `INSERT INTO shipcore.fc_planning_scenario_items
          (scenario_id, container_id, master_sku, qty)
        SELECT $1, i.container_id, i.master_sku, SUM(i.qty)::int
          FROM shipcore.fc_container_items i
          JOIN shipcore.fc_containers c ON c.id = i.container_id
-        WHERE c.status::text = ANY($2::text[])
+        WHERE c.status::text <> 'complete'
         GROUP BY i.container_id, i.master_sku
        ON CONFLICT (scenario_id, container_id, master_sku) DO UPDATE
          SET qty = EXCLUDED.qty, updated_at = now()`,
-      [toScenarioId, inboundStatuses(includeDrafts)],
+      [toScenarioId],
+    );
+    // A container with no ETA yet gets no row, so the tab picks the date up
+    // from Live once it has one instead of freezing "no date".
+    await db(client).query(
+      `INSERT INTO shipcore.fc_planning_scenario_containers
+         (scenario_id, container_id, eta_date)
+       SELECT $1, c.id, c.eta_date
+         FROM shipcore.fc_containers c
+        WHERE c.status::text <> 'complete'
+          AND c.eta_date IS NOT NULL
+       ON CONFLICT (scenario_id, container_id) DO UPDATE
+         SET eta_date = EXCLUDED.eta_date, updated_at = now()`,
+      [toScenarioId],
     );
   },
 

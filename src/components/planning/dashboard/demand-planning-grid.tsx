@@ -126,7 +126,7 @@ export interface DemandPlanningGridProps {
    *  steps, and undoing one of them would restore an order the other half
    *  immediately overrode. */
   onColumnOrderChange?: (next: ColumnOrder, options?: { containerOrderCustomized?: boolean }) => void;
-  onContainerEtaChange?: (container: { id: number; name: string; eta: string }) => void;
+  onContainerEtaChange?: (container: { id: number; name: string; eta: string; scenarioId?: string | null }) => void;
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;

@@ -162,6 +162,54 @@ writes sales under the current code (`src/lib/planning/sku-history.ts`, applied 
 - `item_category` still comes from the code the order carried, so a folded SKU can hold
   rows in two categories (see Velocity's `item_category` above). Sums per SKU are right.
 
+### Copy Live freezes quantities and ETAs, drafts included
+
+A Demand Planning tab made with Copy Live (`snapshotLiveIntoScenario` in
+`src/lib/planning-scenarios/repository.ts`) stores the quantity of every cell and the ETA
+of every container the grid shows as a column: `status <> 'complete'`, so draft containers
+too. From then on the tab follows Live for neither; both stay editable in the tab
+(planning team, 2026-11-20).
+
+- **Status is not copied.** It stays Live's, so a draft promoted to shipped shows its new
+  status on the tab, with the quantities and ETA it had when the tab was made.
+- **The tab's columns are ordered by the tab's ETAs** (`containersWithEtaOverrides` in
+  `demand-planning-dashboard.tsx`), not Live's. A container added to Live after the copy
+  has no row in the tab and reads Live's ETA.
+- **It used to copy shipped and packing-received only, and no ETAs.** Draft columns
+  opened empty on the copy, and its column order and S.O.D. moved with Live.
+- **Tabs made before this are not backfilled.** They keep empty draft columns and follow
+  Live's ETAs.
+- **Apply to Live is unchanged**, which now matters more: it writes every ETA that differs
+  from Live, including ones Live changed after the copy, and it still skips draft
+  containers (`include_drafts: false`). Open question with the planning team.
+
+### CSP and CS are separate products
+
+`CC-CSP-03-M-GR-1TO` used to be folded onto `CC-CS-03-M-GR-1TO` by `MASTER_SKU_REMAP`
+(`src/lib/planning/master-sku.ts`), sales and stock both. The fold put CSP's 42 units at
+TTM Group on the CS row. Removed 2026-11-20 at the planning team's request; do not add a
+CSP to CS entry back. Two fixed merges remain: `CC-CP-07-N-GR` to `CC-CP-03-M-GR-1TO` and
+`C-SJ-GR-7` to `CC-CS-03-J-GR-1TO`.
+
+Stock separates on the next Demand Planning Sync. Sales separate inside the Velocity sync
+window (120 days); older CSP sales stay under CS until a full sync
+(`POST /api/velocity/sync?full=true`).
+
+### Inventory Management page (`/planning/inventory-management`)
+
+Every SKU in SKU Master, active and inactive, with stock by warehouse
+(`src/lib/inventory-management/`). Built for reviewing TBD and Discontinued SKUs, which
+Demand Planning hides. Read-only, under the `demand-planning` read permission.
+
+- **Stock is read live** from Supabase `coverland_inventory_by_warehouse`, not from
+  `fc_stats`, so it matches ShipHero rather than the last Sync.
+- **Fixed merges are in the row's numbers** and listed as `mergedFrom`: the source SKU has
+  no row of its own.
+- **The TN to TNS / BKGR to BKLG roll-up is not in the numbers.** The old SKU keeps its own
+  row, so adding it would list the same units twice. `demandPlanningAddsFrom` says what
+  Demand Planning adds, and only when both SKUs are Active, as there.
+- The whole list is one response (about 6.5 MB for 12k SKUs), filtered on the client.
+
 ### The As-of date replays what there is history for, and nothing else
 
 The Demand Planning toolbar's As of control (`?asOf=`) recomputes the view for a past

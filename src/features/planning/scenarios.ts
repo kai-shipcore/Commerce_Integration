@@ -79,7 +79,6 @@ export const ScenarioApi = {
     name: string;
     view_state?: Record<string, unknown>;
     copy_from?: "live" | null;
-    include_drafts?: boolean;
   }): Promise<ScenarioDetail> {
     return request<ScenarioDetail>("/api/planning/scenarios", {
       method: "POST",

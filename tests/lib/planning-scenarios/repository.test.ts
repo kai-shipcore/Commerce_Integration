@@ -117,15 +117,31 @@ describe("inbound status set", () => {
     expect(inboundStatuses(true)).toEqual(["shipped", "packing_received", "draft"]);
   });
 
-  it("is what the Live snapshot and diff queries filter on", async () => {
-    await PlanningScenarioRepository.snapshotLiveIntoScenario(7, true);
-    expect(poolQueryMock.mock.calls[0][1]).toEqual([
-      7, ["shipped", "packing_received", "draft"],
-    ]);
-
-    poolQueryMock.mockClear();
+  it("is what the Live diff queries filter on", async () => {
     await PlanningScenarioRepository.getLiveQuantities(false);
     expect(poolQueryMock.mock.calls[0][1]).toEqual([["shipped", "packing_received"]]);
+  });
+});
+
+describe("snapshotLiveIntoScenario", () => {
+  it("copies quantities of every container the grid shows, drafts included", async () => {
+    await PlanningScenarioRepository.snapshotLiveIntoScenario(7);
+    const [query, params] = poolQueryMock.mock.calls[0];
+    expect(sql([query])).toContain("INSERT INTO shipcore.fc_planning_scenario_items");
+    // Not a status list: a list is what left draft containers out of the copy.
+    expect(sql([query])).toContain("WHERE c.status::text <> 'complete'");
+    expect(params).toEqual([7]);
+  });
+
+  it("freezes each container's ETA in the same copy", async () => {
+    await PlanningScenarioRepository.snapshotLiveIntoScenario(7);
+    expect(poolQueryMock).toHaveBeenCalledTimes(2);
+    const [query, params] = poolQueryMock.mock.calls[1];
+    expect(sql([query])).toContain("INSERT INTO shipcore.fc_planning_scenario_containers");
+    expect(sql([query])).toContain("SELECT $1, c.id, c.eta_date");
+    expect(sql([query])).toContain("WHERE c.status::text <> 'complete'");
+    expect(sql([query])).toContain("AND c.eta_date IS NOT NULL");
+    expect(params).toEqual([7]);
   });
 });
 

@@ -143,7 +143,6 @@ export const PlanningScenarioService = {
     visibility?: ScenarioVisibility;
     color?: string | null;
     viewState?: Record<string, unknown>;
-    includeDrafts?: boolean;
   }): Promise<ScenarioDetail> {
     const name = input.name.trim();
     if (!name) throw new ValidationError("Tab name is required");
@@ -155,22 +154,19 @@ export const PlanningScenarioService = {
       color: input.color ?? null,
       viewState: input.viewState ?? {},
     });
-    await PlanningScenarioRepository.snapshotLiveIntoScenario(
-      parseId(row.id),
-      input.includeDrafts ?? false,
-    );
+    await PlanningScenarioRepository.snapshotLiveIntoScenario(parseId(row.id));
     return toDetail(row, actor);
   },
 
   /**
    * Copies a tab. `fromId` of null means "copy the Live tab", which snapshots
-   * the current real container quantities into the new scenario's overlay so
-   * the copy opens showing exactly what Live shows.
+   * the current real container quantities and ETAs into the new scenario's
+   * overlay, draft containers included, so the copy opens showing exactly what
+   * Live shows and then stops following it.
    */
   async duplicate(actor: ScenarioActor, input: {
     fromId: string | number | null;
     name: string;
-    includeDrafts?: boolean;
     viewState?: Record<string, unknown>;
   }): Promise<ScenarioDetail> {
     const name = input.name.trim();
@@ -195,7 +191,7 @@ export const PlanningScenarioService = {
     if (source) {
       await PlanningScenarioRepository.copyOverlay(parseId(source.id), newId);
     } else {
-      await PlanningScenarioRepository.snapshotLiveIntoScenario(newId, input.includeDrafts ?? false);
+      await PlanningScenarioRepository.snapshotLiveIntoScenario(newId);
     }
 
     return toDetail(created, actor);

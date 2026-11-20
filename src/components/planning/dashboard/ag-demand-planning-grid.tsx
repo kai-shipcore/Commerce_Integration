@@ -5962,8 +5962,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       return;
     }
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
-    // Only Live tells the rest of the page a container actually moved.
-    if (!scenario) onContainerEtaChange?.({ id: container.container_id, name: container.name, eta });
+    // The page orders the columns. It is told which tab the date belongs to,
+    // so a scenario's ETA never reaches Live's.
+    onContainerEtaChange?.({ id: container.container_id, name: container.name, eta, scenarioId: scenario?.id ?? null });
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
     toast.success(pick("변경되었습니다.", "Updated."));

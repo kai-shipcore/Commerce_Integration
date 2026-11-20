@@ -3,6 +3,7 @@
 // row here — it is the real container data, and has no scenario id.
 // GET   — tabs the caller can see (their own plus shared ones)
 // POST  — create a tab; `copy_from: "live"` snapshots the current real plan
+//         (quantities and ETAs of every container the grid shows, drafts included)
 // PATCH — reorder tabs ({ order: [id, ...] })
 // Controller layer only: shaping and rules live in PlanningScenarioService.
 
@@ -20,7 +21,6 @@ const CreateSchema = z.object({
   color: z.string().trim().max(32).nullable().optional(),
   view_state: z.record(z.string(), z.unknown()).optional(),
   copy_from: z.literal("live").nullable().optional(),
-  include_drafts: z.boolean().optional(),
 });
 
 const ReorderSchema = z.object({
@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
       ? await PlanningScenarioService.duplicate(actor, {
         fromId: null,
         name: input.name,
-        includeDrafts: input.include_drafts ?? false,
         viewState: input.view_state,
       })
       : await PlanningScenarioService.create(actor, {
@@ -66,7 +65,6 @@ export async function POST(request: NextRequest) {
         visibility: input.visibility,
         color: input.color ?? null,
         viewState: input.view_state,
-        includeDrafts: input.include_drafts ?? false,
       });
 
     return apiSuccess({ data }, 201);

@@ -159,8 +159,8 @@ describe("create", () => {
     // An overlay is the whole truth for its tab — a cell with no row reads as
     // empty rather than falling back to Live — so a tab has to start with one.
     repositoryMock.insert.mockResolvedValue(scenario({ id: "7", name: "Fresh" }));
-    await PlanningScenarioService.create(OWNER, { name: "Fresh", includeDrafts: true });
-    expect(repositoryMock.snapshotLiveIntoScenario).toHaveBeenCalledWith(7, true);
+    await PlanningScenarioService.create(OWNER, { name: "Fresh" });
+    expect(repositoryMock.snapshotLiveIntoScenario).toHaveBeenCalledWith(7);
   });
 
   it("rejects a blank name before touching the database", async () => {
@@ -174,9 +174,9 @@ describe("duplicate", () => {
   it("snapshots Live when there is no source tab", async () => {
     repositoryMock.insert.mockResolvedValue(scenario({ id: "7", name: "Copy" }));
     await PlanningScenarioService.duplicate(OWNER, {
-      fromId: null, name: "Copy", includeDrafts: true,
+      fromId: null, name: "Copy",
     });
-    expect(repositoryMock.snapshotLiveIntoScenario).toHaveBeenCalledWith(7, true);
+    expect(repositoryMock.snapshotLiveIntoScenario).toHaveBeenCalledWith(7);
     expect(repositoryMock.copyOverlay).not.toHaveBeenCalled();
   });
 

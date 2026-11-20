@@ -174,10 +174,10 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   con: false,
 };
 
-/** Whether draft containers count as inbound. The dashboard has always shown
- *  only shipped and packing-received containers; the scenario tabs read the
- *  same set, so the two cannot drift into disagreeing about which columns
- *  exist. */
+/** Whether draft containers count as inbound in the row-level figures
+ *  (Total Inbound, the container list) and in what Apply to Live writes. The
+ *  container columns are a separate read and always include drafts, which is
+ *  why Copy Live does not take this flag: it copies every column. */
 const INCLUDE_DRAFT_CONTAINERS = false;
 
 /** How long a category change waits before refetching. Short, because the
@@ -1224,6 +1224,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [scenarioBusy, setScenarioBusy] = useState(false);
   const [scenarioOverlay, setScenarioOverlay] = useState<ScenarioOverlay | null>(null);
+  /** ETAs edited on the open scenario tab since it loaded. Kept apart from
+   *  `scenarioOverlay` on purpose: replacing the overlay re-projects every row
+   *  for the grid, and an ETA edit only needs to move the columns. */
+  const [scenarioEtaEdits, setScenarioEtaEdits] = useState<Map<number, string>>(new Map());
   // Only the latest tab switch may hydrate the dashboard. A slower response
   // for a tab that was already left must not overwrite the current tab.
   const tabHydrationRequestRef = useRef(0);
@@ -1259,11 +1263,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const conditionalFormatLocalSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
 
-  const containersWithEtaOverrides = useMemo(() => data.containers.map((container) => (
-    container.container_id !== undefined && containerEtaOverrides.has(container.container_id)
-      ? { ...container, eta: containerEtaOverrides.get(container.container_id)! }
-      : container
-  )), [containerEtaOverrides, data.containers]);
+  /**
+   * The ETAs the open tab's columns are ordered by. A scenario tab has its own:
+   * the dates frozen when it was copied, plus its edits. Ordering a tab by
+   * Live's dates is what let its columns move when a container's ETA changed on
+   * Live. A container the tab has no date for (added to Live after the copy)
+   * still reads Live's.
+   */
+  const containersWithEtaOverrides = useMemo(() => {
+    const tabEtas = new Map(containerEtaOverrides);
+    if (activeScenarioId !== null) {
+      for (const override of scenarioOverlay?.containers ?? []) {
+        if (override.eta_date) tabEtas.set(Number(override.container_id), override.eta_date);
+      }
+      for (const [containerId, eta] of scenarioEtaEdits) tabEtas.set(containerId, eta);
+    }
+    return data.containers.map((container) => (
+      container.container_id !== undefined && tabEtas.has(container.container_id)
+        ? { ...container, eta: tabEtas.get(container.container_id)! }
+        : container
+    ));
+  }, [activeScenarioId, containerEtaOverrides, data.containers, scenarioEtaEdits, scenarioOverlay]);
   const effectiveColumnOrder = useMemo(() => (
     containerOrderCustomized || columnOrder.length === 0
       ? columnOrder
@@ -1919,6 +1939,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setScenarioBusy(true);
     // Prevent the incoming tab from rendering with the outgoing tab's data.
     setScenarioOverlay(null);
+    setScenarioEtaEdits(new Map());
     // These guard the mount race, not a deliberate switch: the incoming tab's
     // own order must be allowed to win here.
     columnOrderChangedRef.current = false;
@@ -1989,7 +2010,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         name: pick("Live 복사본", "Copy of Live"),
         view_state: buildPreferenceBlob(),
         copy_from: "live",
-        include_drafts: INCLUDE_DRAFT_CONTAINERS,
       });
       await refreshScenarios();
       handleSelectTab(created.id);
@@ -2205,7 +2225,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleContainerEtaChange = useCallback((updated: { id: number; name: string; eta: string }) => {
+  const handleContainerEtaChange = useCallback((updated: { id: number; name: string; eta: string; scenarioId?: string | null }) => {
+    // An ETA edited on a scenario tab is that tab's alone: it moves the tab's
+    // columns and leaves Live's dates, and every other tab's, where they were.
+    if (updated.scenarioId) {
+      if (updated.scenarioId !== activeScenarioIdRef.current) return;
+      setScenarioEtaEdits((current) => new Map(current).set(updated.id, updated.eta));
+      return;
+    }
     const nextOverrides = new Map(containerEtaOverridesRef.current).set(updated.id, updated.eta);
     containerEtaOverridesRef.current = nextOverrides;
     setContainerEtaOverrides(nextOverrides);
