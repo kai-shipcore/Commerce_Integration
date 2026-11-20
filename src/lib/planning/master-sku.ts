@@ -1,8 +1,15 @@
 import { carCoverSegments } from "@/lib/planning/sku-format";
 
+// Source master SKUs counted as another SKU: their sales (Velocity sync, OOS
+// Impact) and their stock (Demand Planning) are added onto the target's row,
+// and the source gets no row of its own.
+//
+// CC-CSP-03-M-GR-1TO used to be here, folded onto CC-CS-03-M-GR-1TO. CSP and CS
+// are separate products to the planning team (2026-11-20): the fold put CSP's
+// 42 units at TTM Group on the CS row, which holds none there itself. Each now
+// keeps its own sales and stock. Do not add a CSP -> CS entry back.
 const MASTER_SKU_REMAP: Record<string, string> = {
   "CC-CP-07-N-GR": "CC-CP-03-M-GR-1TO",
-  "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
   "C-SJ-GR-7": "CC-CS-03-J-GR-1TO",
 };
 
@@ -18,6 +25,14 @@ function exactRemapWhensSql(skuExpression: string): string {
   return Object.entries(MASTER_SKU_REMAP)
     .map(([from, to]) => `WHEN ${skuExpression} = '${from}' THEN '${to}'`)
     .join(" ");
+}
+
+/** The SKU a source SKU's stock is counted under: the exact remaps only, the
+ *  same rule as `inventoryMasterSkuSql`. Legacy SWC spellings keep their own
+ *  SKU for stock. */
+export function inventoryMasterSku(masterSku: string): string {
+  const trimmed = masterSku.trim();
+  return MASTER_SKU_REMAP[trimmed] ?? trimmed;
 }
 
 export function normalizedMasterSkuSql(skuExpression: string): string {
@@ -36,7 +51,7 @@ export function normalizedMasterSkuSql(skuExpression: string): string {
 // that SKU (2026-11-12). Sales still fold through normalizedMasterSkuSql,
 // since orders placed before the 2026-07-22 rename carry the legacy spelling
 // and the current SKU's history would otherwise start at the rename.
-// The three exact remaps in MASTER_SKU_REMAP still apply to stock.
+// The exact remaps in MASTER_SKU_REMAP still apply to stock.
 export function inventoryMasterSkuSql(skuExpression: string): string {
   return `CASE
     ${exactRemapWhensSql(skuExpression)}

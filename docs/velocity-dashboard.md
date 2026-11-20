@@ -390,7 +390,6 @@ Before storage, these source master SKUs are remapped:
 | From | To |
 |---|---|
 | `CC-CP-07-N-GR` | `CC-CP-03-M-GR-1TO` |
-| `CC-CSP-03-M-GR-1TO` | `CC-CS-03-M-GR-1TO` |
 | `C-SJ-GR-7` | `CC-CS-03-J-GR-1TO` |
 
 ### Refresh strategy

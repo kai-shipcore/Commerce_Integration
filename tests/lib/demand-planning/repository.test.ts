@@ -240,7 +240,8 @@ describe("DemandPlanningRepository.getInventoryByWarehouse", () => {
     await DemandPlanningRepository.getInventoryByWarehouse();
     const [sql] = lookupQueryMock.mock.calls[0];
     expect(sql).not.toContain("SWC");
-    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+    expect(sql).toContain("WHEN master_sku = 'C-SJ-GR-7' THEN 'CC-CS-03-J-GR-1TO'");
+    expect(sql).not.toContain("CSP");
   });
 });
 
@@ -344,7 +345,8 @@ describe("DemandPlanningRepository.getInventorySnapshotAsOf", () => {
     await DemandPlanningRepository.getInventorySnapshotAsOf("2026-08-12");
     const [sql] = lookupQueryMock.mock.calls[0];
     expect(sql).not.toContain("SWC");
-    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+    expect(sql).toContain("WHEN master_sku = 'C-SJ-GR-7' THEN 'CC-CS-03-J-GR-1TO'");
+    expect(sql).not.toContain("CSP");
   });
 
   it("returns nothing when the lookup DB is not configured", async () => {

@@ -76,7 +76,7 @@ describe("partMasterSkuSql", () => {
 describe("inventoryMasterSkuSql", () => {
   it("keeps the exact remaps but leaves legacy SWC spellings on their own SKU", () => {
     const sql = inventoryMasterSkuSql("master_sku");
-    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+    expect(sql).toContain("WHEN master_sku = 'C-SJ-GR-7' THEN 'CC-CS-03-J-GR-1TO'");
     expect(sql).not.toContain("SWC");
     expect(sql).toContain("ELSE BTRIM(master_sku)");
   });
@@ -84,6 +84,22 @@ describe("inventoryMasterSkuSql", () => {
   it("leaves the sales normalisation folding legacy SWC spellings", () => {
     const sql = normalizedMasterSkuSql("master_sku");
     expect(sql).toContain("'^CA-([^-]+)-SWC-(.+)$'");
-    expect(sql).toContain("WHEN master_sku = 'CC-CSP-03-M-GR-1TO' THEN 'CC-CS-03-M-GR-1TO'");
+    expect(sql).toContain("WHEN master_sku = 'C-SJ-GR-7' THEN 'CC-CS-03-J-GR-1TO'");
+  });
+});
+
+// CSP and CS are separate products (planning team, 2026-11-20). Folding
+// CC-CSP-03-M-GR-1TO onto CC-CS-03-M-GR-1TO showed 42 units of TTM stock on a
+// row whose own SKU held none there.
+describe("CSP and CS master SKUs", () => {
+  it("are not counted as one product, in sales or in stock", () => {
+    expect(normalizeMasterSku("CC-CSP-03-M-GR-1TO")).toBe("CC-CSP-03-M-GR-1TO");
+    expect(normalizedMasterSkuSql("master_sku")).not.toContain("CSP");
+    expect(inventoryMasterSkuSql("master_sku")).not.toContain("CSP");
+  });
+
+  it("leaves the remaps that are still in force", () => {
+    expect(normalizeMasterSku("CC-CP-07-N-GR")).toBe("CC-CP-03-M-GR-1TO");
+    expect(normalizeMasterSku("C-SJ-GR-7")).toBe("CC-CS-03-J-GR-1TO");
   });
 });
