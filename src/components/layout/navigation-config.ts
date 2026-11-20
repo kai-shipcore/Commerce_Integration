@@ -23,6 +23,7 @@ import {
   Container,
   ArrowUpToLine,
   Replace,
+  PackageSearch,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PermSection, RolePermMatrix } from "@/lib/permissions-config";
@@ -208,6 +209,16 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    // Stock by warehouse for every SKU, active or not. Shown under the
+    // demand-planning permission: it is the stock that page reads.
+    id: "inventory-management",
+    name: "Inventory Management",
+    href: "/planning/inventory-management",
+    icon: PackageSearch,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "purchase-orders",
     name: "Purchase Orders",
     href: "/planning/purchase-orders",
@@ -333,6 +344,7 @@ export const userDefaultVisibleMenuIds = [
   "transit-stock",
   "min-sales",
   "replacing-soon",
+  "inventory-management",
   "inventory",
   "orders",
 ];
@@ -341,7 +353,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "inventory":           ["inventory"],
   "orders":              ["orders"],
   "velocity":            ["velocity"],
-  "demand-planning":     ["demand-planning"],
+  "demand-planning":     ["demand-planning", "inventory-management"],
   "demand-forecast":     ["demand-forecast"],
   "container-planning":  ["container-planning"],
   "available-stock":     ["available-stock"],
