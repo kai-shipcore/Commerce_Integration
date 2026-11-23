@@ -54,11 +54,47 @@ export interface ScenarioItemPatch {
   qty: number | null;
 }
 
+/** Every entry names its container (number and status) so the preview can list
+ *  the changes without a second lookup. */
+interface ApplyDiffContainer {
+  container_id: number;
+  container_name: string;
+  container_status: string;
+}
+
 export interface ApplyDiff {
-  added: Array<{ container_id: number; master_sku: string; qty: number }>;
-  changed: Array<{ container_id: number; master_sku: string; from: number; to: number }>;
-  removed: Array<{ container_id: number; master_sku: string; from: number; item_ids: number[] }>;
-  eta_changes: Array<{ container_id: number; from: string | null; to: string }>;
+  added: Array<ApplyDiffContainer & { master_sku: string; qty: number }>;
+  changed: Array<ApplyDiffContainer & { master_sku: string; from: number; to: number }>;
+  removed: Array<ApplyDiffContainer & { master_sku: string; from: number; item_ids: number[] }>;
+  eta_changes: Array<ApplyDiffContainer & { from: string | null; to: string }>;
+}
+
+/**
+ * Which of the previewed changes to write. `cells` are `<container id>::<SKU>`
+ * keys, as `applyCellKey` builds them. Without a selection everything in the
+ * preview is written.
+ */
+export interface ApplySelection {
+  cells: string[];
+  eta_container_ids: number[];
+}
+
+export function applyCellKey(containerId: number | string, masterSku: string): string {
+  return `${containerId}::${masterSku}`;
+}
+
+function selectFromDiff(diff: ApplyDiff, selection: ApplySelection | undefined): ApplyDiff {
+  if (!selection) return diff;
+  const cells = new Set(selection.cells);
+  const etas = new Set(selection.eta_container_ids);
+  const picked = <T extends { container_id: number; master_sku: string }>(rows: T[]) =>
+    rows.filter((row) => cells.has(applyCellKey(row.container_id, row.master_sku)));
+  return {
+    added: picked(diff.added),
+    changed: picked(diff.changed),
+    removed: picked(diff.removed),
+    eta_changes: diff.eta_changes.filter((row) => etas.has(row.container_id)),
+  };
 }
 
 function isAdmin(actor: ScenarioActor): boolean {
@@ -335,6 +371,15 @@ export const PlanningScenarioService = {
 
     const liveByCell = new Map(live.map((row) => [`${row.container_id}::${row.master_sku}`, row]));
     const liveContainers = new Set(liveEtas.map((row) => row.container_id));
+    const liveContainerById = new Map(liveEtas.map((row) => [row.container_id, row]));
+    const containerInfo = (containerId: string): ApplyDiffContainer => {
+      const row = liveContainerById.get(containerId);
+      return {
+        container_id: Number(containerId),
+        container_name: row?.container_name ?? `#${containerId}`,
+        container_status: row?.status ?? "",
+      };
+    };
     const liveEtaById = new Map(liveEtas.map((row) => [row.container_id, row.eta_date]));
 
     const diff: ApplyDiff = { added: [], changed: [], removed: [], eta_changes: [] };
@@ -344,7 +389,7 @@ export const PlanningScenarioService = {
       // not something the grid still shows, so it is not applied either.
       if (!liveContainers.has(item.container_id)) continue;
 
-      const container_id = Number(item.container_id);
+      const container = containerInfo(item.container_id);
       const current = liveByCell.get(`${item.container_id}::${item.master_sku}`);
       const currentQty = current?.qty ?? 0;
 
@@ -352,17 +397,17 @@ export const PlanningScenarioService = {
       if (item.qty === 0) {
         if (current) {
           diff.removed.push({
-            container_id,
+            ...container,
             master_sku: item.master_sku,
             from: currentQty,
             item_ids: current.item_ids,
           });
         }
       } else if (!current) {
-        diff.added.push({ container_id, master_sku: item.master_sku, qty: item.qty });
+        diff.added.push({ ...container, master_sku: item.master_sku, qty: item.qty });
       } else {
         diff.changed.push({
-          container_id,
+          ...container,
           master_sku: item.master_sku,
           from: currentQty,
           to: item.qty,
@@ -376,7 +421,7 @@ export const PlanningScenarioService = {
       const currentEta = liveEtaById.get(override.container_id) ?? null;
       if (currentEta === override.eta_date) continue;
       diff.eta_changes.push({
-        container_id: Number(override.container_id),
+        ...containerInfo(override.container_id),
         from: currentEta,
         to: override.eta_date,
       });
@@ -395,12 +440,18 @@ export const PlanningScenarioService = {
     rawId: string | number,
     actor: ScenarioActor,
     includeDrafts: boolean,
+    selection?: ApplySelection,
   ): Promise<ApplyDiff & { applied: number }> {
     // Reading the tab is enough to apply it — the write lands on Live, which
     // the route guards with demand-planning.edit, and a locked tab is not
     // itself modified here.
     await loadViewable(rawId, actor);
-    const diff = await PlanningScenarioService.previewApply(rawId, actor, includeDrafts);
+    // The preview is recomputed here and the selection applied to it, so a
+    // key that no longer differs from Live is simply not written.
+    const diff = selectFromDiff(
+      await PlanningScenarioService.previewApply(rawId, actor, includeDrafts),
+      selection,
+    );
 
     const writes = [...diff.added, ...diff.changed];
     // upsertItem refuses a SKU with no CBM on file. Checking first means an

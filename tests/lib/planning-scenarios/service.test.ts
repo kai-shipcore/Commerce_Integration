@@ -215,7 +215,7 @@ describe("previewApply", () => {
     repositoryMock.getById.mockResolvedValue(scenario());
     repositoryMock.getContainerOverrides.mockResolvedValue([]);
     repositoryMock.getLiveEtas.mockResolvedValue([
-      { container_id: "1", eta_date: "2026-10-01" },
+      { container_id: "1", eta_date: "2026-10-01", container_name: "EXTRA-03-CA", status: "shipped" },
     ]);
   });
 
@@ -235,12 +235,14 @@ describe("previewApply", () => {
 
     const diff = await PlanningScenarioService.previewApply("5", OWNER, false);
 
-    expect(diff.added).toEqual([{ container_id: 1, master_sku: "NEW", qty: 10 }]);
+    // Each entry names its container, so the preview table needs no lookup.
+    const container = { container_id: 1, container_name: "EXTRA-03-CA", container_status: "shipped" };
+    expect(diff.added).toEqual([{ ...container, master_sku: "NEW", qty: 10 }]);
     expect(diff.changed).toEqual([
-      { container_id: 1, master_sku: "CHANGED", from: 20, to: 25 },
+      { ...container, master_sku: "CHANGED", from: 20, to: 25 },
     ]);
     expect(diff.removed).toEqual([
-      { container_id: 1, master_sku: "REMOVED", from: 7, item_ids: [102, 103] },
+      { ...container, master_sku: "REMOVED", from: 7, item_ids: [102, 103] },
     ]);
     // A cell the scenario has no row for is not an opinion, so it is untouched.
     expect(diff.added.concat(diff.changed as never[])).not.toContainEqual(
@@ -267,8 +269,31 @@ describe("previewApply", () => {
 
     const diff = await PlanningScenarioService.previewApply("5", OWNER, false);
     expect(diff.eta_changes).toEqual([
-      { container_id: 1, from: "2026-10-01", to: "2026-11-15" },
+      {
+        container_id: 1, container_name: "EXTRA-03-CA", container_status: "shipped",
+        from: "2026-10-01", to: "2026-11-15",
+      },
     ]);
+  });
+
+  // Apply to Live writes draft containers too (planning team, 2026-11-23).
+  it("reads Live with drafts when asked, and marks a draft container's changes", async () => {
+    repositoryMock.getLiveEtas.mockResolvedValue([
+      { container_id: "9", eta_date: "2027-02-10", container_name: "146-CA", status: "draft" },
+    ]);
+    repositoryMock.getItems.mockResolvedValue([{ container_id: "9", master_sku: "SKU-A", qty: 30 }]);
+    repositoryMock.getLiveQuantities.mockResolvedValue([
+      { container_id: "9", master_sku: "SKU-A", qty: 12, item_ids: [7] },
+    ]);
+
+    const diff = await PlanningScenarioService.previewApply("5", OWNER, true);
+
+    expect(repositoryMock.getLiveQuantities).toHaveBeenCalledWith(true);
+    expect(repositoryMock.getLiveEtas).toHaveBeenCalledWith(true);
+    expect(diff.changed).toEqual([{
+      container_id: 9, container_name: "146-CA", container_status: "draft",
+      master_sku: "SKU-A", from: 12, to: 30,
+    }]);
   });
 });
 
@@ -307,5 +332,70 @@ describe("applyToLive", () => {
     expect(containerServiceMock.deleteItem).toHaveBeenCalledWith(102);
     expect(containerServiceMock.deleteItem).toHaveBeenCalledWith(103);
     expect(result.applied).toBe(2);
+  });
+
+  describe("with a selection from the preview", () => {
+    beforeEach(() => {
+      repositoryMock.getItems.mockResolvedValue([
+        { container_id: "1", master_sku: "NEW", qty: 10 },
+        { container_id: "1", master_sku: "CHANGED", qty: 25 },
+        { container_id: "1", master_sku: "REMOVED", qty: 0 },
+      ]);
+      repositoryMock.getLiveQuantities.mockResolvedValue([
+        { container_id: "1", master_sku: "CHANGED", qty: 20, item_ids: [101] },
+        { container_id: "1", master_sku: "REMOVED", qty: 7, item_ids: [102] },
+      ]);
+      repositoryMock.getContainerOverrides.mockResolvedValue([
+        { container_id: "1", eta_date: "2026-11-15" },
+      ]);
+      containerServiceMock.getExistingOrThrow.mockResolvedValue({ id: "1" });
+    });
+
+    it("writes only the ticked quantities and leaves the ETA alone", async () => {
+      const result = await PlanningScenarioService.applyToLive("5", OWNER, true, {
+        cells: ["1::CHANGED"],
+        eta_container_ids: [],
+      });
+
+      expect(containerServiceMock.upsertItem).toHaveBeenCalledTimes(1);
+      expect(containerServiceMock.upsertItem).toHaveBeenCalledWith(1, "CHANGED", 25, 0, null);
+      expect(containerServiceMock.deleteItem).not.toHaveBeenCalled();
+      expect(containerServiceMock.updateEta).not.toHaveBeenCalled();
+      expect(result.applied).toBe(1);
+    });
+
+    it("writes an ETA only when its container is ticked", async () => {
+      const result = await PlanningScenarioService.applyToLive("5", OWNER, true, {
+        cells: [],
+        eta_container_ids: [1],
+      });
+
+      expect(containerServiceMock.upsertItem).not.toHaveBeenCalled();
+      expect(containerServiceMock.updateEta).toHaveBeenCalledTimes(1);
+      expect(containerServiceMock.updateEta.mock.calls[0][2]).toBe("2026-11-15");
+      expect(result.applied).toBe(1);
+    });
+
+    it("does not check CBM for a SKU that was not ticked", async () => {
+      containerServiceMock.findSkusMissingCbm.mockResolvedValue([]);
+      await PlanningScenarioService.applyToLive("5", OWNER, true, {
+        cells: ["1::REMOVED"],
+        eta_container_ids: [],
+      });
+      expect(containerServiceMock.findSkusMissingCbm).toHaveBeenCalledWith([]);
+    });
+
+    it("ignores a ticked key that no longer differs from Live", async () => {
+      const result = await PlanningScenarioService.applyToLive("5", OWNER, true, {
+        cells: ["1::GONE"],
+        eta_container_ids: [99],
+      });
+      expect(result.applied).toBe(0);
+    });
+
+    it("still writes everything when no selection is sent", async () => {
+      const result = await PlanningScenarioService.applyToLive("5", OWNER, true);
+      expect(result.applied).toBe(4);
+    });
   });
 });

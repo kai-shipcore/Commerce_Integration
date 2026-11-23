@@ -370,13 +370,22 @@ export const PlanningScenarioRepository = {
     return result.rows;
   },
 
-  /** ETA dates of the inbound containers, for diffing a scenario's overrides. */
+  /** ETA dates of the inbound containers, for diffing a scenario's overrides.
+   *  The number and status ride along so the preview can name each container. */
   async getLiveEtas(includeDrafts: boolean, client?: Queryable): Promise<Array<{
     container_id: string;
     eta_date: string | null;
+    container_name?: string | null;
+    status?: string | null;
   }>> {
-    const result = await db(client).query<{ container_id: string; eta_date: string | null }>(
-      `SELECT id::text AS container_id, to_char(eta_date, 'YYYY-MM-DD') AS eta_date
+    const result = await db(client).query<{
+      container_id: string;
+      eta_date: string | null;
+      container_name: string | null;
+      status: string | null;
+    }>(
+      `SELECT id::text AS container_id, to_char(eta_date, 'YYYY-MM-DD') AS eta_date,
+              container_number AS container_name, status::text AS status
          FROM shipcore.fc_containers
         WHERE status::text = ANY($1::text[])`,
       [inboundStatuses(includeDrafts)],

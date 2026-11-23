@@ -38,11 +38,23 @@ export interface ScenarioItemPatch {
   qty: number | null;
 }
 
+interface ScenarioApplyContainer {
+  container_id: number;
+  container_name: string;
+  container_status: string;
+}
+
+/** Which previewed changes to write; `cells` are `<container id>::<SKU>`. */
+export interface ScenarioApplySelection {
+  cells: string[];
+  eta_container_ids: number[];
+}
+
 export interface ScenarioApplyDiff {
-  added: Array<{ container_id: number; master_sku: string; qty: number }>;
-  changed: Array<{ container_id: number; master_sku: string; from: number; to: number }>;
-  removed: Array<{ container_id: number; master_sku: string; from: number; item_ids: number[] }>;
-  eta_changes: Array<{ container_id: number; from: string | null; to: string }>;
+  added: Array<ScenarioApplyContainer & { master_sku: string; qty: number }>;
+  changed: Array<ScenarioApplyContainer & { master_sku: string; from: number; to: number }>;
+  removed: Array<ScenarioApplyContainer & { master_sku: string; from: number; item_ids: number[] }>;
+  eta_changes: Array<ScenarioApplyContainer & { from: string | null; to: string }>;
   applied: number;
   preview: boolean;
 }
@@ -157,11 +169,18 @@ export const ScenarioApi = {
     });
   },
 
-  apply(id: string, options: { confirm: boolean; includeDrafts: boolean }): Promise<ScenarioApplyDiff> {
+  apply(
+    id: string,
+    options: { confirm: boolean; includeDrafts: boolean; selection?: ScenarioApplySelection },
+  ): Promise<ScenarioApplyDiff> {
     return request<ScenarioApplyDiff>(`/api/planning/scenarios/${id}/apply`, {
       method: "POST",
       headers: PLANNING_HEADERS,
-      body: JSON.stringify({ confirm: options.confirm, include_drafts: options.includeDrafts }),
+      body: JSON.stringify({
+        confirm: options.confirm,
+        include_drafts: options.includeDrafts,
+        ...(options.selection ? { selection: options.selection } : {}),
+      }),
     });
   },
 };

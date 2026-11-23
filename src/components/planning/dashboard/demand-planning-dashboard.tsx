@@ -94,6 +94,7 @@ import { ScenarioApi } from "@/features/planning/scenarios";
 import { projectRowsForScenario } from "@/features/planning/scenario-projection";
 import type {
   ScenarioApplyDiff,
+  ScenarioApplySelection,
   ScenarioOverlay,
   ScenarioSummary,
 } from "@/features/planning/scenarios";
@@ -179,6 +180,11 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
  *  container columns are a separate read and always include drafts, which is
  *  why Copy Live does not take this flag: it copies every column. */
 const INCLUDE_DRAFT_CONTAINERS = false;
+/** Apply to Live writes draft containers too (planning team, 2026-11-23): a tab
+ *  copied from Live holds their quantities, and leaving them out meant an edit
+ *  made to a draft column on the tab never reached Live. Separate from the flag
+ *  above, which is about the row-level figures. */
+const APPLY_INCLUDES_DRAFTS = true;
 
 /** How long a category change waits before refetching. Short, because the
  *  category picker commits on its Apply button rather than on each tick, so
@@ -2107,7 +2113,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (!canCreateDemandPlanning) return;
     setScenarioBusy(true);
     try {
-      const diff = await ScenarioApi.apply(scenario.id, { confirm: false, includeDrafts: INCLUDE_DRAFT_CONTAINERS });
+      const diff = await ScenarioApi.apply(scenario.id, { confirm: false, includeDrafts: APPLY_INCLUDES_DRAFTS });
       setApplyDialog({ scenario, diff });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : pick("반영할 내용을 확인하지 못했습니다.", "Could not work out what would change."));
@@ -2116,13 +2122,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     }
   }, [pick, canCreateDemandPlanning]);
 
-  const confirmApplyToLive = useCallback(async () => {
+  const confirmApplyToLive = useCallback(async (selection: ScenarioApplySelection) => {
     if (!applyDialog || !canCreateDemandPlanning) return;
     const { scenario } = applyDialog;
     setApplyDialog(null);
     setScenarioBusy(true);
     try {
-      const result = await ScenarioApi.apply(scenario.id, { confirm: true, includeDrafts: INCLUDE_DRAFT_CONTAINERS });
+      const result = await ScenarioApi.apply(scenario.id, { confirm: true, includeDrafts: APPLY_INCLUDES_DRAFTS, selection });
       toast.success(pick(
         `Live에 ${result.applied}건을 반영했습니다.`,
         `Applied ${result.applied} change${result.applied === 1 ? "" : "s"} to Live.`,
@@ -4964,7 +4970,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           scenarioName={applyDialog.scenario.name}
           diff={applyDialog.diff}
           onCancel={() => setApplyDialog(null)}
-          onConfirm={() => { void confirmApplyToLive(); }}
+          onConfirm={(selection) => { void confirmApplyToLive(selection); }}
         />
       )}
       {isConditionalFormattingOpen && <ConditionalFormattingPanel

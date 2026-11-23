@@ -1,6 +1,7 @@
 // Code Guide: POST /api/planning/scenarios/[id]/apply
 // Writes a tab's container plan onto the real one.
 //
+// `selection` narrows a confirmed apply to the changes ticked in the preview.
 // Without `confirm: true` this only returns the diff, so the grid can show
 // what would change before anything is written — the write is not reversible.
 // The write itself goes through ContainerPlanningService so allocation
@@ -17,6 +18,11 @@ import { PlanningScenarioService } from "@/lib/planning-scenarios/service";
 const BodySchema = z.object({
   confirm: z.boolean().optional(),
   include_drafts: z.boolean().optional(),
+  // Which previewed changes to write. Absent: all of them.
+  selection: z.object({
+    cells: z.array(z.string()).max(50_000),
+    eta_container_ids: z.array(z.number().int()).max(5_000),
+  }).optional(),
 });
 
 export async function POST(
@@ -42,7 +48,7 @@ export async function POST(
       return apiSuccess({ data: { ...diff, applied: 0, preview: true } });
     }
 
-    const result = await PlanningScenarioService.applyToLive(id, actor, includeDrafts);
+    const result = await PlanningScenarioService.applyToLive(id, actor, includeDrafts, parsed.data.selection);
     return apiSuccess({ data: { ...result, preview: false } });
   } catch (error) {
     return handleApiError(error);
