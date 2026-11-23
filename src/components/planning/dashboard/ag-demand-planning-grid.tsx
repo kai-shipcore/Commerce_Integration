@@ -5165,6 +5165,25 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
    * skipped the way an absent/empty cell is.
    */
   const seededScenarioRef = useRef<string | null | undefined>(undefined);
+  /**
+   * Live's quantities and ETAs as they stood when Live was last left.
+   *
+   * `data` is what the page loaded; an edit on Live is saved to the server and
+   * shown from `qtyOverrides`, and never written back into `data`. Rebuilding
+   * Live from `data` alone on the way back therefore dropped every quantity
+   * entered since the page loaded: enter a quantity, Copy Live, return to Live,
+   * and the cell was empty until a refresh. A scenario tab has no such gap,
+   * because its overlay is fetched again each time it is opened.
+   */
+  const liveSessionRef = useRef<{
+    qty: Map<string, QtyOverride>;
+    serverItemIds: Map<string, number>;
+    etas: Map<number, string>;
+  } | null>(null);
+  useEffect(() => {
+    // A reload brings Live's quantities fresh from the server.
+    if (!containerDetailsLoaded) liveSessionRef.current = null;
+  }, [containerDetailsLoaded]);
   useEffect(() => {
     if (!containerDetailsLoaded) return;
     const tabKey = scenario?.id ?? null;
@@ -5172,6 +5191,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     // would briefly show Live's numbers under the new tab's name.
     if (tabKey !== null && scenarioOverlay === null) return;
     if (seededScenarioRef.current === tabKey) return;
+    if (seededScenarioRef.current === null) {
+      liveSessionRef.current = {
+        qty: new Map(qtyOverridesRef.current),
+        serverItemIds: qtyServerItemIdsRef.current,
+        etas: etaOverrides,
+      };
+    }
+    const liveSession = tabKey === null ? liveSessionRef.current : null;
+    if (tabKey === null) liveSessionRef.current = null;
     seededScenarioRef.current = tabKey;
 
     const byContainerId = new Map<string, ContainerMeta>();
@@ -5213,15 +5241,21 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
 
-    const etas = new Map<number, string>();
+    const etas = new Map<number, string>(liveSession?.etas);
     for (const override of scenarioOverlay?.containers ?? []) {
       if (override.eta_date) etas.set(Number(override.container_id), override.eta_date);
     }
 
+    // Back on Live: what was entered there since the page loaded goes on top
+    // of `data`, cleared cells included.
+    for (const [key, override] of liveSession?.qty ?? []) seeded.set(key, override);
+
     qtyOverridesRef.current = seeded;
     lastChainedQtyOverridesRef.current = seeded;
     // Server item ids and edit history both belong to the tab being left.
-    qtyServerItemIdsRef.current = new Map();
+    // Live's ids come back with it: without them the next edit of a cell
+    // created this session would insert a second item instead of updating.
+    qtyServerItemIdsRef.current = liveSession?.serverItemIds ?? new Map();
     sheetUndoStackRef.current = [];
     sheetRedoStackRef.current = [];
     setQtyOverrides(seeded);
@@ -6153,12 +6187,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     // Capture the destination at edit time. Reading scenarioRef later inside
     // the queue can route the write into a different tab after a fast switch.
     const targetScenario = scenarioRef.current;
+    // Same for the item ids: a save that finishes after a tab switch must
+    // record its id against the tab the edit was made on.
+    const serverItemIds = qtyServerItemIdsRef.current;
     const persistenceKey = `${targetScenario?.id ?? "live"}::${key}`;
     const previousPersistence = qtyPersistenceQueueRef.current.get(persistenceKey) ?? Promise.resolve();
     const persistence = previousPersistence.catch(() => {}).then(async () => {
       try {
         let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
-        const serverItemId = qtyServerItemIdsRef.current.get(key) ?? itemId;
+        const serverItemId = serverItemIds.get(key) ?? itemId;
         if (targetScenario) {
           // A scenario tab writes only to its own overlay. The real container
           // item is left alone, so allocation syncing and the container audit
@@ -6209,8 +6246,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           json = { success: true, qty: 0, allocated_qty: 0 };
         }
         if (!json.success) throw new Error("Failed to save Con. Qty");
-        if (nextQty === 0) qtyServerItemIdsRef.current.delete(key);
-        else if (json.item_id ?? serverItemId) qtyServerItemIdsRef.current.set(key, (json.item_id ?? serverItemId)!);
+        if (nextQty === 0) serverItemIds.delete(key);
+        else if (json.item_id ?? serverItemId) serverItemIds.set(key, (json.item_id ?? serverItemId)!);
         if (qtyOverridesRef.current.get(key) !== optimisticOverride) return;
 
         const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
@@ -6287,6 +6324,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           });
         }
       } catch {
+        // A Live save that fails after Live was left: take the quantity back
+        // out of what Live will show on return.
+        const parked = targetScenario ? undefined : liveSessionRef.current?.qty;
+        if (parked?.get(key) === optimisticOverride) {
+          if (previous === undefined) parked.delete(key);
+          else parked.set(key, previous);
+        }
         if (qtyOverridesRef.current.get(key) !== optimisticOverride) return;
         const rolledBack = new Map(qtyOverridesRef.current);
         if (previous === undefined) rolledBack.delete(key);
