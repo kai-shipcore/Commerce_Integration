@@ -117,7 +117,9 @@ place that reads a SKU's shape.
 - **Do not write `startsWith("CC-")` or `includes("SWC")`.** Use `isCarCoverSku` /
   `isSteeringWheelSku` (and `carCoverSkuSql` / `steeringWheelSkuSql` in SQL). A steering
   wheel cover is `SWC` in the old code and the `SW` product in the new one; its
-  `category_code` and `sales_status` stay `SWC`.
+  `category_code` stays `SWC`. Its `sales_status` is `SWC` only until someone sets another:
+  the Sync (`upsertSwcProducts`) fills a blank and no longer overwrites a Hold /
+  Discontinued / TBD, which it did on every run until 2026-11-23.
 - **`fc_products.category_code` is still the first thing to read.** The helpers are for
   code that only has the SKU text: a SKU not in `fc_products` yet, and SQL classifying a raw
   SKU column.
@@ -179,9 +181,14 @@ too. From then on the tab follows Live for neither; both stay editable in the ta
   opened empty on the copy, and its column order and S.O.D. moved with Live.
 - **Tabs made before this are not backfilled.** They keep empty draft columns and follow
   Live's ETAs.
-- **Apply to Live is unchanged**, which now matters more: it writes every ETA that differs
-  from Live, including ones Live changed after the copy, and it still skips draft
-  containers (`include_drafts: false`). Open question with the planning team.
+- **Apply to Live lists every change and writes the ticked ones** (planning team,
+  2026-11-23; `apply-to-live-dialog.tsx`, `selection` on `POST .../apply`).
+  - Quantities are ticked by default, **ETAs are not**: a date Live changed after the copy
+    differs from the tab's frozen one, so it is listed too, and applying it sets Live back.
+  - **Draft containers are written** (`APPLY_INCLUDES_DRAFTS`). `INCLUDE_DRAFT_CONTAINERS`
+    is a different flag, for the row-level figures, and is still off.
+  - A cell the tab has no row for is not an opinion and is never written, so a tab made
+    before the copy change still leaves Live's draft quantities alone.
 
 ### CSP and CS are separate products
 
@@ -203,6 +210,15 @@ Demand Planning hides. Read-only, under the `demand-planning` read permission.
 
 - **Stock is read live** from Supabase `coverland_inventory_by_warehouse`, not from
   `fc_stats`, so it matches ShipHero rather than the last Sync.
+- **Leftover feed rows are left out**, here and in the Demand Planning Sync
+  (`src/lib/planning/warehouse-feed.ts`). The feed is rewritten daily and `created_at` is
+  the last write, but a product removed from ShipHero is never deleted, so its row keeps
+  the stock of its last day. A row more than 7 days older than the newest row is dropped
+  (2026-11-23: 79 rows, 627 units, four of the SKUs Active). SKU Master's sync and the
+  Inventory page (`src/lib/inventory/`) still read every row.
+- **A SKU can be in the feed and not in ShipHero's product list**: ShipHero's list defaults
+  to Active Products, and the feed carries deactivated ones too
+  (`CA-SC-10-F-TEST-BK-1TO`, written the same day it was reported missing).
 - **Fixed merges are in the row's numbers** and listed as `mergedFrom`: the source SKU has
   no row of its own.
 - **The TN to TNS / BKGR to BKLG roll-up is not in the numbers.** The old SKU keeps its own

@@ -31,6 +31,17 @@ describe("InventoryManagementRepository.getStockBySkuAndWarehouse", () => {
     expect(sql).toContain("GROUP BY 1, 2");
   });
 
+  // The refresh never deletes a product removed from ShipHero, so its last row
+  // stays with the stock it had (CA-FM-TX-80-FM14242: 16 at Fullerton, last
+  // written three months before the team asked where it came from).
+  it("leaves out rows the daily refresh no longer writes", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await InventoryManagementRepository.getStockBySkuAndWarehouse();
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("SELECT MAX(created_at) FROM ecommerce_data.coverland_inventory_by_warehouse");
+    expect(sql).toContain("- INTERVAL '7 days'");
+  });
+
   // The page has to show which SKU stock really sits under, so the merge
   // rules are applied in the service, not in this query.
   it("does not remap the SKU", async () => {

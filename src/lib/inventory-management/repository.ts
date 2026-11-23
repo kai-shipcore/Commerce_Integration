@@ -6,9 +6,14 @@
  * the same feed the Demand Planning Sync reads. The SKU is deliberately NOT
  * remapped here: the page has to show which SKU the stock really sits under,
  * so the remaps are applied in the service, where the source SKU is still known.
+ *
+ * Rows the daily refresh no longer writes are left out: they belong to products
+ * removed from ShipHero and still carry the stock of their last day
+ * (`planning/warehouse-feed.ts`).
  */
 
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { currentWarehouseFeedRowSql } from "@/lib/planning/warehouse-feed";
 
 export interface WarehouseStockRow {
   master_sku: string;
@@ -30,6 +35,7 @@ export const InventoryManagementRepository = {
         SUM(COALESCE(available, 0))::int     AS available
       FROM ecommerce_data.coverland_inventory_by_warehouse
       WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+        AND ${currentWarehouseFeedRowSql()}
       GROUP BY 1, 2
     `);
     return result.rows;

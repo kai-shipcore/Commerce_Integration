@@ -243,6 +243,28 @@ describe("DemandPlanningRepository.getInventoryByWarehouse", () => {
     expect(sql).toContain("WHEN master_sku = 'C-SJ-GR-7' THEN 'CC-CS-03-J-GR-1TO'");
     expect(sql).not.toContain("CSP");
   });
+
+  // Four Active SKUs were showing stock from rows last written months before
+  // (cablelock: 203 at Fullerton, row untouched since 2026-09-17).
+  it("leaves out rows the daily refresh no longer writes", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getInventoryByWarehouse();
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("SELECT MAX(created_at) FROM ecommerce_data.coverland_inventory_by_warehouse");
+    expect(sql).toContain("- INTERVAL '7 days'");
+  });
+});
+
+describe("DemandPlanningRepository.upsertSwcProducts", () => {
+  // Every Sync used to set sales_status back to 'SWC', wiping a Hold,
+  // Discontinued or TBD someone had set in SKU Master.
+  it("keeps a Sales Status that is already set and only fills a blank", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.upsertSwcProducts();
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("sales_status  = COALESCE(NULLIF(BTRIM(fc_products.sales_status), ''), 'SWC')");
+    expect(sql).not.toMatch(/sales_status\s*=\s*'SWC',/);
+  });
 });
 
 describe("DemandPlanningRepository.getOosEpisodes", () => {

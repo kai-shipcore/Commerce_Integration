@@ -16,6 +16,7 @@ import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
+import { currentWarehouseFeedRowSql } from "@/lib/planning/warehouse-feed";
 import { carCoverSkuSql, steeringWheelSkuSql } from "@/lib/planning/sku-format";
 import type { ColorReferenceRule, ColorRuleCategory } from "@/lib/planning/reference-sales";
 
@@ -607,6 +608,9 @@ export const DemandPlanningRepository = {
           backorder
         FROM ecommerce_data.coverland_inventory_by_warehouse
         WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+          -- Leftover rows of products removed from ShipHero still hold their
+          -- last stock; see planning/warehouse-feed.ts.
+          AND ${currentWarehouseFeedRowSql()}
       )
       SELECT
         master_sku,
@@ -885,7 +889,10 @@ export const DemandPlanningRepository = {
         AND link_master_sku IS NOT NULL
       ON CONFLICT (master_sku) DO UPDATE SET
         category_code = 'SWC',
-        sales_status  = 'SWC',
+        -- Only fills a blank. It used to write 'SWC' over whatever was there,
+        -- so a Hold / Discontinued / TBD set in SKU Master was gone after the
+        -- next Sync (planning team, 2026-11-23).
+        sales_status  = COALESCE(NULLIF(BTRIM(fc_products.sales_status), ''), 'SWC'),
         updated_at = NOW()
     `);
   },
