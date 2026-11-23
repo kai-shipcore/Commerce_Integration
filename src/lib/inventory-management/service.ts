@@ -73,6 +73,13 @@ export interface InventoryManagementRow {
   /** Stock Demand Planning adds onto this row from another SKU's own row.
    *  Not included in this row's numbers. */
   demandPlanningAddsFrom: StockSource[];
+  /**
+   * Warehouses whose figure ShipHero's daily update no longer writes, with the
+   * day it was last written (`YYYY-MM-DD`). The product is inactive in ShipHero
+   * or gone from it; the quantity is what it held that day. Empty for a SKU
+   * ShipHero still updates. Separate from `status`, which is SKU Master's.
+   */
+  notUpdatedByShipHero: Partial<Record<InventoryWarehouseKey, string>>;
 }
 
 export interface InventoryManagementData {
@@ -121,6 +128,9 @@ export function buildInventoryRows(
 ): InventoryManagementRow[] {
   // Stock under each SKU exactly as the warehouse feed names it.
   const ownStock = new Map<string, StockByWarehouse>();
+  // Per SKU, the warehouses ShipHero stopped updating and since when. When
+  // several feed rows land in one column (Other), the oldest date is kept.
+  const staleSince = new Map<string, Partial<Record<InventoryWarehouseKey, string>>>();
   for (const row of stockRows) {
     let stock = ownStock.get(row.master_sku);
     if (!stock) {
@@ -130,6 +140,12 @@ export function buildInventoryRows(
     const key = WAREHOUSE_KEY_BY_NAME.get(row.warehouse.toLowerCase()) ?? "other";
     stock[key].onHand += row.on_hand;
     stock[key].available += row.available;
+    if (row.stale) {
+      const since = staleSince.get(row.master_sku) ?? {};
+      const day = row.last_updated ?? "";
+      if (since[key] === undefined || day < since[key]) since[key] = day;
+      staleSince.set(row.master_sku, since);
+    }
   }
 
   // Fixed merges: a source SKU's stock is counted under its target.
@@ -178,6 +194,16 @@ export function buildInventoryRows(
     if (own) addStock(warehouses, own);
     for (const source of mergedFrom) addStock(warehouses, source.warehouses);
 
+    // The row's own warehouses, plus those of any SKU merged into it.
+    const notUpdatedByShipHero: Partial<Record<InventoryWarehouseKey, string>> = {
+      ...(own ? staleSince.get(sku) : undefined),
+    };
+    for (const source of mergedFrom) {
+      for (const [key, day] of Object.entries(staleSince.get(source.sku) ?? {}) as Array<[InventoryWarehouseKey, string]>) {
+        if (notUpdatedByShipHero[key] === undefined) notUpdatedByShipHero[key] = day;
+      }
+    }
+
     return {
       masterSku: sku,
       productName: product.product_name || null,
@@ -190,6 +216,7 @@ export function buildInventoryRows(
       total: totalOf(warehouses),
       mergedFrom,
       demandPlanningAddsFrom: rollupSources.get(sku) ?? [],
+      notUpdatedByShipHero,
     };
   });
 }

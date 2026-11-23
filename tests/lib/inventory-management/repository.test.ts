@@ -31,15 +31,21 @@ describe("InventoryManagementRepository.getStockBySkuAndWarehouse", () => {
     expect(sql).toContain("GROUP BY 1, 2");
   });
 
-  // The refresh never deletes a product removed from ShipHero, so its last row
-  // stays with the stock it had (CA-FM-TX-80-FM14242: 16 at Fullerton, last
-  // written three months before the team asked where it came from).
-  it("leaves out rows the daily refresh no longer writes", async () => {
+  // A product made inactive in ShipHero drops out of the daily update while
+  // its units are still on the shelf (CA-NP-01-BK: 196 at Fullerton, last
+  // written a month earlier). Filtering those rows out hid real stock, so they
+  // are returned and flagged instead.
+  it("keeps rows the daily update no longer writes, and flags them", async () => {
     lookupQueryMock.mockResolvedValue({ rows: [] });
     await InventoryManagementRepository.getStockBySkuAndWarehouse();
     const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("AS stale");
     expect(sql).toContain("SELECT MAX(created_at) FROM ecommerce_data.coverland_inventory_by_warehouse");
     expect(sql).toContain("- INTERVAL '7 days'");
+    expect(sql).toContain("AS last_updated");
+    // The flag is a selected column, never a filter.
+    const where = sql.slice(sql.indexOf("WHERE master_sku"), sql.indexOf("GROUP BY"));
+    expect(where).not.toContain("created_at");
   });
 
   // The page has to show which SKU stock really sits under, so the merge

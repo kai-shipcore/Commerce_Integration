@@ -137,6 +137,68 @@ describe("buildInventoryRows", () => {
     expect(rows[1].total.onHand).toBe(96);
   });
 
+  describe("stock ShipHero no longer updates", () => {
+    const stale = (masterSku: string, warehouse: string, onHand: number, day: string): WarehouseStockRow => ({
+      ...stock(masterSku, warehouse, onHand), stale: true, last_updated: day,
+    });
+
+    // The planning team: keep showing this stock, it is still on the shelf.
+    it("keeps the stock in the numbers and says which warehouses stopped updating, and when", () => {
+      const [row] = buildInventoryRows(
+        [product("CA-NP-01-BK", { category_code: "AC" })],
+        [
+          stale("CA-NP-01-BK", "Fullerton", 196, "2026-10-20"),
+          stale("CA-NP-01-BK", "Canary", 0, "2026-10-20"),
+        ],
+      );
+
+      expect(row.warehouses.fullerton.onHand).toBe(196);
+      expect(row.total.onHand).toBe(196);
+      expect(row.notUpdatedByShipHero).toEqual({ fullerton: "2026-10-20", canary: "2026-10-20" });
+    });
+
+    it("marks nothing on a SKU ShipHero still updates", () => {
+      const [row] = buildInventoryRows(
+        [product("CA-SC-10-F-10-BK-1TO")],
+        [{ ...stock("CA-SC-10-F-10-BK-1TO", "Fullerton", 9), stale: false, last_updated: "2026-11-23" }],
+      );
+
+      expect(row.notUpdatedByShipHero).toEqual({});
+    });
+
+    it("marks only the warehouse that stopped, when the others still update", () => {
+      const [row] = buildInventoryRows(
+        [product("CA-SC-10-F-10-BK-1TO")],
+        [
+          { ...stock("CA-SC-10-F-10-BK-1TO", "Fullerton", 9), stale: false, last_updated: "2026-11-23" },
+          stale("CA-SC-10-F-10-BK-1TO", "TTM Group", 3, "2026-09-01"),
+        ],
+      );
+
+      expect(row.notUpdatedByShipHero).toEqual({ ttm: "2026-09-01" });
+    });
+
+    it("is independent of the SKU Master status", () => {
+      const rows = buildInventoryRows(
+        [product("A-ACTIVE"), product("B-INACTIVE", { status: "inactive" })],
+        [stale("A-ACTIVE", "Fullerton", 5, "2026-09-17"), stock("B-INACTIVE", "Fullerton", 5)],
+      );
+
+      expect(rows[0]).toMatchObject({ status: "active", notUpdatedByShipHero: { fullerton: "2026-09-17" } });
+      expect(rows[1]).toMatchObject({ status: "inactive", notUpdatedByShipHero: {} });
+    });
+
+    it("carries the mark over from a SKU merged into the row", () => {
+      const [row] = buildInventoryRows(
+        [product("CC-CS-03-J-GR-1TO")],
+        [stock("CC-CS-03-J-GR-1TO", "Fullerton", 10), stale("C-SJ-GR-7", "TTM Group", 4, "2026-08-13")],
+      );
+
+      expect(row.warehouses.ttm.onHand).toBe(4);
+      expect(row.notUpdatedByShipHero).toEqual({ ttm: "2026-08-13" });
+    });
+  });
+
   describe("final car cover SKU (TN to TNS, BKGR to BKLG)", () => {
     const stockRows = [
       stock("CC-TN-15-V-BKGR-STR", "Fullerton", 20),

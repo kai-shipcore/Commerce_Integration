@@ -189,6 +189,10 @@ too. From then on the tab follows Live for neither; both stay editable in the ta
     is a different flag, for the row-level figures, and is still off.
   - A cell the tab has no row for is not an opinion and is never written, so a tab made
     before the copy change still leaves Live's draft quantities alone.
+  - **It re-reads the dashboard, it does not Sync** (`refetch` in
+    `demand-planning-data.ts`). It used to call `reload()`, which is the full Sync: five
+    minutes after every apply for a change already in `fc_container_items`. Consequence:
+    Workbench gets the applied containers on the next Sync, not at once.
 
 ### CSP and CS are separate products
 
@@ -210,15 +214,19 @@ Demand Planning hides. Read-only, under the `demand-planning` read permission.
 
 - **Stock is read live** from Supabase `coverland_inventory_by_warehouse`, not from
   `fc_stats`, so it matches ShipHero rather than the last Sync.
-- **Leftover feed rows are left out**, here and in the Demand Planning Sync
+- **Stock ShipHero stopped updating is kept and marked red**
   (`src/lib/planning/warehouse-feed.ts`). The feed is rewritten daily and `created_at` is
-  the last write, but a product removed from ShipHero is never deleted, so its row keeps
-  the stock of its last day. A row more than 7 days older than the newest row is dropped
-  (2026-11-23: 79 rows, 627 units, four of the SKUs Active). SKU Master's sync and the
-  Inventory page (`src/lib/inventory/`) still read every row.
-- **A SKU can be in the feed and not in ShipHero's product list**: ShipHero's list defaults
-  to Active Products, and the feed carries deactivated ones too
-  (`CA-SC-10-F-TEST-BK-1TO`, written the same day it was reported missing).
+  the last write, but a product that drops out of ShipHero's daily list keeps its last
+  row. That is usually a product made inactive in ShipHero with the units still on the
+  shelf (`CA-NP-01-BK`: 196 at Fullerton, last written 2026-10-20, same in ShipHero a
+  month later), so the stock stays in the numbers here and on Demand Planning.
+  - **Do not filter these rows out.** They were dropped for one day (2026-11-23) as
+    "leftovers of removed products"; the planning team pointed out the stock was real.
+  - The row's `notUpdatedByShipHero` lists the warehouses and the last update day. The
+    page shows it as the `ShipHero` column, separate from `DP Status` (SKU Master's).
+  - **It is not ShipHero's per-warehouse active flag.** The feed has no such column, and a
+    product inactive at one warehouse stops updating at all of them. Showing the real
+    flag needs the feed to carry it. Nor can it tell inactive from deleted.
 - **Fixed merges are in the row's numbers** and listed as `mergedFrom`: the source SKU has
   no row of its own.
 - **The TN to TNS / BKGR to BKLG roll-up is not in the numbers.** The old SKU keeps its own

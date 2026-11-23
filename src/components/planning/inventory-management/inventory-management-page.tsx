@@ -7,6 +7,12 @@
  * where TBD and Discontinued SKUs are reviewed. A row whose stock comes from
  * another SKU says so under the SKU, with the source SKU and the units.
  * Read-only: Status and Sales Status are edited in SKU Master.
+ *
+ * Two different "inactive"s are shown apart. "DP Status" is SKU Master's.
+ * "ShipHero" is whether ShipHero's daily update still writes the SKU: when it
+ * stopped, the warehouse figures are the last ones received, shown in red with
+ * the date in the tooltip. That stock is kept on the page because it can still
+ * be on the shelf.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -32,10 +38,12 @@ type InventoryRow = {
   total: StockQty;
   mergedFrom: StockSource[];
   demandPlanningAddsFrom: StockSource[];
+  /** Warehouses ShipHero no longer updates, with the last update day. */
+  notUpdatedByShipHero?: Partial<Record<WarehouseKey, string>>;
 };
 
 type Measure = keyof StockQty;
-type SortColumn = "type" | "sku" | "status" | "salesStatus" | "salesType" | "total" | WarehouseKey;
+type SortColumn = "type" | "sku" | "status" | "shipHero" | "salesStatus" | "salesType" | "total" | WarehouseKey;
 type SortDirection = "asc" | "desc";
 
 const WAREHOUSE_COLUMNS: Array<{ key: WarehouseKey; label: string }> = [
@@ -57,8 +65,18 @@ function salesStatusOf(row: InventoryRow): string {
   return row.salesStatus ?? IN_PRODUCTION;
 }
 
+/** The warehouses ShipHero stopped updating for this SKU, as [warehouse, day]. */
+function staleWarehouses(row: InventoryRow): Array<[WarehouseKey, string]> {
+  return Object.entries(row.notUpdatedByShipHero ?? {}) as Array<[WarehouseKey, string]>;
+}
+
+function isInactiveInShipHero(row: InventoryRow): boolean {
+  return staleWarehouses(row).length > 0;
+}
+
 function sortValue(row: InventoryRow, column: SortColumn, measure: Measure): string | number {
   switch (column) {
+    case "shipHero": return isInactiveInShipHero(row) ? "Inactive" : "Active";
     case "type": return row.categoryCode ?? "";
     case "sku": return row.masterSku;
     case "status": return row.status;
@@ -87,6 +105,7 @@ export function InventoryManagementPage() {
   const [salesTypeFilter, setSalesTypeFilter] = useState("all");
   const [onlyFromOtherSku, setOnlyFromOtherSku] = useState(false);
   const [onlyWithStock, setOnlyWithStock] = useState(false);
+  const [shipHeroFilter, setShipHeroFilter] = useState("all");
   const [measure, setMeasure] = useState<Measure>("available");
   const [sortColumn, setSortColumn] = useState<SortColumn>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -127,6 +146,7 @@ export function InventoryManagementPage() {
     const needle = query.trim().toLowerCase();
     const filtered = rows.filter((row) => {
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
+      if (shipHeroFilter !== "all" && isInactiveInShipHero(row) !== (shipHeroFilter === "inactive")) return false;
       if (salesStatusFilter !== "all" && salesStatusOf(row) !== salesStatusFilter) return false;
       if (typeFilter !== "all" && row.categoryCode !== typeFilter) return false;
       if (salesTypeFilter !== "all" && row.originalOrCustom !== salesTypeFilter) return false;
@@ -147,7 +167,7 @@ export function InventoryManagementPage() {
         : String(left).localeCompare(String(right));
       return (order || a.masterSku.localeCompare(b.masterSku)) * sign;
     });
-  }, [measure, onlyFromOtherSku, onlyWithStock, query, rows, salesStatusFilter, salesTypeFilter, sortColumn, sortDirection, statusFilter, typeFilter]);
+  }, [measure, onlyFromOtherSku, onlyWithStock, query, rows, salesStatusFilter, salesTypeFilter, shipHeroFilter, sortColumn, sortDirection, statusFilter, typeFilter]);
 
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -158,6 +178,7 @@ export function InventoryManagementPage() {
     active: rows.filter((row) => row.status === "active").length,
     inactive: rows.filter((row) => row.status !== "active").length,
     fromOtherSku: rows.filter((row) => row.mergedFrom.length > 0 || row.demandPlanningAddsFrom.length > 0).length,
+    inactiveInShipHero: rows.filter(isInactiveInShipHero).length,
   }), [rows]);
 
   function toggleSort(column: SortColumn) {
@@ -176,12 +197,23 @@ export function InventoryManagementPage() {
     return `${source.sku} (${numberFormat.format(source.total[measure])})`;
   }
 
+  function staleTooltip(day: string): string {
+    return pick(
+      `ShipHero가 ${day} 이후 이 SKU를 업데이트하지 않습니다 (ShipHero에서 비활성 또는 삭제). 수량은 그날 기준입니다.`,
+      `ShipHero has not updated this SKU since ${day}: it is inactive in ShipHero, or no longer there. The quantity is from that day.`,
+    );
+  }
+
   function exportRows() {
     const sheet = XLSX.utils.json_to_sheet(visibleRows.map((row) => ({
       "Product Type": row.categoryCode ?? "",
       "SKU": row.masterSku,
       "Product Name": row.productName ?? "",
-      "Status": row.status,
+      "DP Status": row.status,
+      "ShipHero": isInactiveInShipHero(row) ? "inactive" : "active",
+      "ShipHero last update": staleWarehouses(row)
+        .map(([key, day]) => `${WAREHOUSE_COLUMNS.find((warehouse) => warehouse.key === key)?.label ?? key} ${day}`)
+        .join(", "),
       "Sales Status": salesStatusOf(row),
       "Original/Custom": row.originalOrCustom,
       ...Object.fromEntries(WAREHOUSE_COLUMNS.flatMap((warehouse) => [
@@ -198,7 +230,7 @@ export function InventoryManagementPage() {
     XLSX.writeFile(workbook, "Inventory Management.xlsx");
   }
 
-  const gridCols = "grid-cols-[56px_minmax(250px,1.6fr)_minmax(150px,1fr)_84px_116px_92px_repeat(8,84px)]";
+  const gridCols = "grid-cols-[56px_minmax(250px,1.6fr)_minmax(150px,1fr)_84px_92px_116px_92px_repeat(8,84px)]";
   const selectClass = "form-input h-9 bg-white text-xs";
   const resetPage = () => setPage(0);
 
@@ -242,10 +274,11 @@ export function InventoryManagementPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-4 border-b border-[#e2dfd8] bg-[#f8f7f4]">
+      <div className="grid grid-cols-5 border-b border-[#e2dfd8] bg-[#f8f7f4]">
         <Stat label={pick("전체 SKU", "All SKUs")} value={counts.total} />
-        <Stat label="Active" value={counts.active} />
-        <Stat label="Inactive" value={counts.inactive} />
+        <Stat label={pick("Demand Pilot Active", "Active in Demand Pilot")} value={counts.active} />
+        <Stat label={pick("Demand Pilot Inactive", "Inactive in Demand Pilot")} value={counts.inactive} />
+        <Stat label={pick("ShipHero Inactive", "Inactive in ShipHero")} value={counts.inactiveInShipHero} tone="stale" />
         <Stat label={pick("다른 SKU 재고 포함", "With stock from another SKU")} value={counts.fromOtherSku} tone="source" />
       </div>
 
@@ -261,9 +294,14 @@ export function InventoryManagementPage() {
           {typeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
         <select aria-label="Status" className={selectClass} value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); resetPage(); }}>
-          <option value="all">{pick("Status: 전체", "Status: All")}</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{pick("DP Status: 전체", "DP Status: All")}</option>
+          <option value="active">{pick("DP Active", "DP: Active")}</option>
+          <option value="inactive">{pick("DP Inactive", "DP: Inactive")}</option>
+        </select>
+        <select aria-label="ShipHero status" className={selectClass} value={shipHeroFilter} onChange={(event) => { setShipHeroFilter(event.target.value); resetPage(); }}>
+          <option value="all">{pick("ShipHero: 전체", "ShipHero: All")}</option>
+          <option value="active">{pick("ShipHero Active", "ShipHero: Active")}</option>
+          <option value="inactive">{pick("ShipHero Inactive", "ShipHero: Inactive")}</option>
         </select>
         <select aria-label="Sales Status" className={selectClass} value={salesStatusFilter} onChange={(event) => { setSalesStatusFilter(event.target.value); resetPage(); }}>
           <option value="all">{pick("Sales Status: 전체", "Sales Status: All")}</option>
@@ -294,11 +332,12 @@ export function InventoryManagementPage() {
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
-        <div className={`grid ${gridCols} min-w-[1480px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground`}>
+        <div className={`grid ${gridCols} min-w-[1580px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground`}>
           <SortHeader label={pick("유형", "Type")} column="type" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <SortHeader label="SKU" column="sku" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <span>{pick("제품명", "Product")}</span>
-          <SortHeader label="Status" column="status" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <SortHeader label="DP Status" column="status" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <SortHeader label="ShipHero" column="shipHero" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <SortHeader label="Sales Status" column="salesStatus" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <SortHeader label="Orig/Custom" column="salesType" sortColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           {WAREHOUSE_COLUMNS.map((warehouse) => (
@@ -316,8 +355,10 @@ export function InventoryManagementPage() {
           pageRows.map((row) => {
             const inactive = row.status !== "active";
             const salesStatus = salesStatusOf(row);
+            const stale = row.notUpdatedByShipHero ?? {};
+            const staleDays = staleWarehouses(row).map(([, day]) => day).sort();
             return (
-              <div key={row.masterSku} className={`grid ${gridCols} min-w-[1480px] items-start border-b border-[#e2dfd8] px-3 py-2 text-sm ${inactive ? "bg-[#fafaf8]" : ""}`}>
+              <div key={row.masterSku} className={`grid ${gridCols} min-w-[1580px] items-start border-b border-[#e2dfd8] px-3 py-2 text-sm ${inactive ? "bg-[#fafaf8]" : ""}`}>
                 <span className="font-mono text-xs text-muted-foreground">{row.categoryCode ?? "-"}</span>
                 <span className="min-w-0 pr-3">
                   <span className="block truncate font-mono text-xs" title={row.masterSku}>{row.masterSku}</span>
@@ -344,6 +385,20 @@ export function InventoryManagementPage() {
                   </span>
                 </span>
                 <span>
+                  {staleDays.length > 0 ? (
+                    <span
+                      title={staleTooltip(staleDays[0])}
+                      className="inline-flex cursor-help items-center rounded-full border border-[#f1b8b8] bg-[#fdeeee] px-2 py-0.5 text-[11px] font-semibold text-[#c42b2b]"
+                    >
+                      Inactive
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full border border-[#e2dfd8] bg-white px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                      Active
+                    </span>
+                  )}
+                </span>
+                <span>
                   <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${salesStatus === IN_PRODUCTION
                     ? "border-[#e2dfd8] bg-white text-muted-foreground"
                     : "border-[#f3d19c] bg-[#fff7e8] text-[#b45309]"}`}
@@ -355,14 +410,23 @@ export function InventoryManagementPage() {
                 {WAREHOUSE_COLUMNS.map((warehouse) => {
                   const value = row.warehouses[warehouse.key][measure];
                   const fromOther = row.mergedFrom.some((source) => source.warehouses[warehouse.key][measure] !== 0);
+                  const staleDay = stale[warehouse.key];
+                  const notes = [
+                    ...(staleDay !== undefined ? [staleTooltip(staleDay)] : []),
+                    ...(fromOther ? row.mergedFrom
+                      .filter((source) => source.warehouses[warehouse.key][measure] !== 0)
+                      .map((source) => `${source.sku}: ${numberFormat.format(source.warehouses[warehouse.key][measure])}`) : []),
+                  ];
+                  // Red wins over the blue "from another SKU" tint: a figure
+                  // ShipHero stopped updating is the thing to notice first.
+                  const tone = staleDay !== undefined
+                    ? `text-[#c42b2b] ${value === 0 ? "opacity-60" : "font-semibold"} cursor-help`
+                    : fromOther ? "font-semibold text-[#1a5cdb]" : value === 0 ? "text-[#b8b4aa]" : "";
                   return (
                     <span
                       key={warehouse.key}
-                      title={fromOther ? row.mergedFrom
-                        .filter((source) => source.warehouses[warehouse.key][measure] !== 0)
-                        .map((source) => `${source.sku}: ${numberFormat.format(source.warehouses[warehouse.key][measure])}`)
-                        .join("\n") : undefined}
-                      className={`pr-3 text-right font-mono text-xs ${value === 0 ? "text-[#b8b4aa]" : ""} ${fromOther ? "font-semibold text-[#1a5cdb]" : ""}`}
+                      title={notes.length > 0 ? notes.join("\n") : undefined}
+                      className={`pr-3 text-right font-mono text-xs ${tone}`}
                     >
                       {numberFormat.format(value)}
                     </span>
@@ -395,11 +459,11 @@ export function InventoryManagementPage() {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: "source" }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone?: "source" | "stale" }) {
   return (
     <div className="border-r border-[#e2dfd8] px-6 py-3 last:border-r-0">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-lg font-semibold ${tone === "source" ? "text-[#1a5cdb]" : ""}`}>{numberFormat.format(value)}</div>
+      <div className={`mt-1 text-lg font-semibold ${tone === "source" ? "text-[#1a5cdb]" : tone === "stale" ? "text-[#c42b2b]" : ""}`}>{numberFormat.format(value)}</div>
     </div>
   );
 }

@@ -16,7 +16,6 @@ import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { inventoryMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
-import { currentWarehouseFeedRowSql } from "@/lib/planning/warehouse-feed";
 import { carCoverSkuSql, steeringWheelSkuSql } from "@/lib/planning/sku-format";
 import type { ColorReferenceRule, ColorRuleCategory } from "@/lib/planning/reference-sales";
 
@@ -607,10 +606,9 @@ export const DemandPlanningRepository = {
           available,
           backorder
         FROM ecommerce_data.coverland_inventory_by_warehouse
+        -- Rows ShipHero no longer updates are counted too: a product made
+        -- inactive there can still be on the shelf (planning/warehouse-feed.ts).
         WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
-          -- Leftover rows of products removed from ShipHero still hold their
-          -- last stock; see planning/warehouse-feed.ts.
-          AND ${currentWarehouseFeedRowSql()}
       )
       SELECT
         master_sku,

@@ -244,14 +244,14 @@ describe("DemandPlanningRepository.getInventoryByWarehouse", () => {
     expect(sql).not.toContain("CSP");
   });
 
-  // Four Active SKUs were showing stock from rows last written months before
-  // (cablelock: 203 at Fullerton, row untouched since 2026-09-17).
-  it("leaves out rows the daily refresh no longer writes", async () => {
+  // For one day these rows were dropped as leftovers of removed products. The
+  // stock was real (a product inactive in ShipHero), so Demand Planning went
+  // back to counting every row.
+  it("counts rows the daily update no longer writes", async () => {
     lookupQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getInventoryByWarehouse();
     const [sql] = lookupQueryMock.mock.calls[0];
-    expect(sql).toContain("SELECT MAX(created_at) FROM ecommerce_data.coverland_inventory_by_warehouse");
-    expect(sql).toContain("- INTERVAL '7 days'");
+    expect(sql).not.toContain("created_at");
   });
 });
 
