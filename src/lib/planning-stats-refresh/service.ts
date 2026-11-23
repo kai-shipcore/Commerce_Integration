@@ -8,6 +8,10 @@ import {
   WorkbenchContainerPushService,
   type WorkbenchContainerPushResult,
 } from "@/lib/workbench-container-push/service";
+import {
+  WorkbenchSalesRatePushService,
+  type WorkbenchSalesRatePushResult,
+} from "@/lib/workbench-sales-rate-push/service";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -33,7 +37,21 @@ async function execute(jobId: string): Promise<void> {
   try {
     const result = await DemandPlanningService.refreshStats(job.payload);
     if (!result) throw new Error("No database connection available");
-    await PlanningStatsRefreshRepository.markSucceeded(jobId, { ...result, workbench: await workbenchPush });
+    // The sales rates are read from the stats this refresh just wrote, so that
+    // push runs after it, and not at all when the refresh failed: the rates in
+    // Workbench then stay as the last good Sync left them. It cannot fail the job.
+    const workbenchSalesRates = await WorkbenchSalesRatePushService.push({
+      requestId: job.correlation_id,
+      salesWindowWeights: job.payload.salesWindowWeights,
+    }).catch((error: unknown): WorkbenchSalesRatePushResult => ({
+      status: "skipped",
+      reason: `Workbench sales rate push crashed: ${errorMessage(error)}`,
+    }));
+    await PlanningStatsRefreshRepository.markSucceeded(jobId, {
+      ...result,
+      workbench: await workbenchPush,
+      workbenchSalesRates,
+    });
   } catch (error: unknown) {
     await PlanningStatsRefreshRepository.markFailed(jobId, errorMessage(error), { workbench: await workbenchPush });
   }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import type { WorkbenchContainerPushResult } from "@/lib/workbench-container-push/service";
+import type { WorkbenchSalesRatePushResult } from "@/lib/workbench-sales-rate-push/service";
 
 export type PlanningStatsRefreshStatus = "queued" | "running" | "succeeded" | "failed";
 
@@ -28,6 +29,8 @@ export type PlanningStatsRefreshResult = {
   velocitySnapshotStale?: boolean;
   // The container push to Workbench that runs with every refresh (2026-11).
   workbench?: WorkbenchContainerPushResult;
+  // The sales rate push to Workbench that follows a successful refresh (2026-11).
+  workbenchSalesRates?: WorkbenchSalesRatePushResult;
 };
 
 export type PlanningStatsRefreshJob = {

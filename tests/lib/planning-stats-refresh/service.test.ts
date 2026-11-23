@@ -23,6 +23,10 @@ const workbenchPushMock = vi.fn();
 vi.mock("@/lib/workbench-container-push/service", () => ({
   WorkbenchContainerPushService: { push: workbenchPushMock },
 }));
+const salesRatePushMock = vi.fn();
+vi.mock("@/lib/workbench-sales-rate-push/service", () => ({
+  WorkbenchSalesRatePushService: { push: salesRatePushMock },
+}));
 
 const workbenchOutcome = {
   status: "succeeded",
@@ -35,6 +39,20 @@ const workbenchOutcome = {
   failed: 0,
   skipped: 0,
   skipReasons: {},
+  errors: [],
+  durationMs: 10,
+};
+
+const salesRateOutcome = {
+  status: "succeeded",
+  target: "staging.cowork.coverland.com",
+  considered: 2,
+  sent: 2,
+  changed: 1,
+  unknownSkuCount: 0,
+  draftSkuCount: 0,
+  notSentSkus: [],
+  failed: 0,
   errors: [],
   durationMs: 10,
 };
@@ -52,6 +70,7 @@ const requestContext = {
 beforeEach(() => {
   vi.clearAllMocks();
   workbenchPushMock.mockResolvedValue(workbenchOutcome);
+  salesRatePushMock.mockResolvedValue(salesRateOutcome);
 });
 
 describe("PlanningStatsRefreshService.queue", () => {
@@ -75,12 +94,13 @@ describe("PlanningStatsRefreshService.queue", () => {
     expect(markRunningMock).not.toHaveBeenCalled();
   });
 
-  it("runs the refresh and records the result, with the Workbench push, after returning the queued job", async () => {
+  it("runs the refresh and records the result, with both Workbench pushes, after returning the queued job", async () => {
+    const salesWindowWeights = { d90: 0.2 };
     queueJobMock.mockResolvedValue({ job, created: true });
     markRunningMock.mockResolvedValue({
       ...job,
       status: "running",
-      payload: {},
+      payload: { salesWindowWeights },
       correlation_id: requestContext.correlationId,
     });
     const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
@@ -89,9 +109,17 @@ describe("PlanningStatsRefreshService.queue", () => {
     await PlanningStatsRefreshService.queue({}, requestContext);
 
     await vi.waitFor(() =>
-      expect(markSucceededMock).toHaveBeenCalledWith(job.id, { ...result, workbench: workbenchOutcome }),
+      expect(markSucceededMock).toHaveBeenCalledWith(job.id, {
+        ...result,
+        workbench: workbenchOutcome,
+        workbenchSalesRates: salesRateOutcome,
+      }),
     );
     expect(workbenchPushMock).toHaveBeenCalledWith({ requestId: requestContext.correlationId });
+    expect(salesRatePushMock).toHaveBeenCalledWith({
+      requestId: requestContext.correlationId,
+      salesWindowWeights,
+    });
   });
 
   it("marks the durable job failed when the background refresh fails, keeping the push outcome", async () => {
@@ -104,6 +132,8 @@ describe("PlanningStatsRefreshService.queue", () => {
     await vi.waitFor(() =>
       expect(markFailedMock).toHaveBeenCalledWith(job.id, "lookup unavailable", { workbench: workbenchOutcome }),
     );
+    // The rates would come from stats the failed refresh did not write.
+    expect(salesRatePushMock).not.toHaveBeenCalled();
   });
 
   it("does not let a crashed Workbench push fail the refresh", async () => {
@@ -119,6 +149,26 @@ describe("PlanningStatsRefreshService.queue", () => {
       expect(markSucceededMock).toHaveBeenCalledWith(job.id, {
         ...result,
         workbench: { status: "skipped", reason: "Workbench push crashed: boom" },
+        workbenchSalesRates: salesRateOutcome,
+      }),
+    );
+    expect(markFailedMock).not.toHaveBeenCalled();
+  });
+
+  it("does not let a crashed sales rate push fail the refresh", async () => {
+    queueJobMock.mockResolvedValue({ job, created: true });
+    markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
+    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
+    refreshStatsMock.mockResolvedValue(result);
+    salesRatePushMock.mockRejectedValue(new Error("boom"));
+
+    await PlanningStatsRefreshService.queue({}, requestContext);
+
+    await vi.waitFor(() =>
+      expect(markSucceededMock).toHaveBeenCalledWith(job.id, {
+        ...result,
+        workbench: workbenchOutcome,
+        workbenchSalesRates: { status: "skipped", reason: "Workbench sales rate push crashed: boom" },
       }),
     );
     expect(markFailedMock).not.toHaveBeenCalled();

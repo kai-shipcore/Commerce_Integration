@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workbenchPushNotice } from "@/features/planning/workbench-push-notice";
+import { workbenchPushNotice, workbenchSalesRateNotice } from "@/features/planning/workbench-push-notice";
 
 const ko = (korean: string) => korean;
 const en = (_korean: string, english: string) => english;
@@ -73,5 +73,76 @@ describe("workbenchPushNotice", () => {
   it("warns when the push crashed", () => {
     const notice = workbenchPushNotice({ status: "skipped", reason: "Workbench push crashed: boom" }, en);
     expect(notice).toEqual({ level: "warning", message: "Workbench push skipped", description: "Workbench push crashed: boom" });
+  });
+});
+
+const salesRateBase = {
+  target: "staging.cowork.coverland.com",
+  considered: 6_700,
+  sent: 0,
+  changed: 0,
+  unknownSkuCount: 0,
+  draftSkuCount: 0,
+  notSentSkus: [] as string[],
+  failed: 0,
+  errors: [] as string[],
+  durationMs: 10,
+};
+
+describe("workbenchSalesRateNotice", () => {
+  it("says nothing for an older job without a push, or one not configured", () => {
+    expect(workbenchSalesRateNotice(undefined, ko)).toBeNull();
+    expect(
+      workbenchSalesRateNotice({ status: "skipped", reason: "WORKBENCH_API_URL or WORKBENCH_API_KEY is not set" }, ko),
+    ).toBeNull();
+  });
+
+  it("reports changed rates as a success, with the SKUs Workbench could not take", () => {
+    const notice = workbenchSalesRateNotice(
+      { ...salesRateBase, status: "succeeded", sent: 6_500, changed: 1_200, unknownSkuCount: 190, draftSkuCount: 10 },
+      en,
+    );
+
+    expect(notice).toEqual({
+      level: "success",
+      message: "Workbench sales rates updated",
+      description: "6,500 sent · 1,200 changed · 200 SKUs missing or draft in Workbench",
+    });
+  });
+
+  it("is only informational when no rate changed", () => {
+    expect(workbenchSalesRateNotice({ ...salesRateBase, status: "succeeded", sent: 10 }, ko)).toEqual({
+      level: "info",
+      message: "Workbench: 바뀐 판매율 없음",
+      description: "전송 10 · 변경 0",
+    });
+  });
+
+  it("warns about a partial push and points to Sync History", () => {
+    const notice = workbenchSalesRateNotice({ ...salesRateBase, status: "partial", sent: 1_000, changed: 5, failed: 1_000 }, en);
+
+    expect(notice?.level).toBe("warning");
+    expect(notice?.description).toBe("1,000 sent · 5 changed · 1,000 failed. See Sync History for details.");
+  });
+
+  it("shows the first error of a failed push", () => {
+    const notice = workbenchSalesRateNotice(
+      { ...salesRateBase, status: "failed", failed: 6_700, errors: ["Workbench POST /x → 401: Unauthorized"] },
+      en,
+    );
+
+    expect(notice).toEqual({
+      level: "error",
+      message: "Workbench sales rate push failed",
+      description: "Workbench POST /x → 401: Unauthorized",
+    });
+  });
+
+  it("warns when the push was skipped for another reason", () => {
+    expect(workbenchSalesRateNotice({ status: "skipped", reason: "Workbench sales rate push crashed: boom" }, en)).toEqual({
+      level: "warning",
+      message: "Workbench sales rate push skipped",
+      description: "Workbench sales rate push crashed: boom",
+    });
   });
 });

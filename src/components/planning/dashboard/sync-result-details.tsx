@@ -281,6 +281,91 @@ function WorkbenchPushDetails({ push, pick }: { push: Result; pick: Pick }) {
   );
 }
 
+const SALES_RATE_COUNT_FIELDS = [
+  { key: "considered", ko: "대상 SKU", en: "SKUs considered", koHelp: "판매율을 보낼 활성 SKU", enHelp: "Active SKUs with a sales rate to send" },
+  { key: "sent", ko: "전송됨", en: "Sent", koHelp: "Workbench가 받아 저장한 판매율", enHelp: "Rates Workbench accepted" },
+  { key: "changed", ko: "변경됨", en: "Changed", koHelp: "그중 Workbench에서 새로 생겼거나 값이 바뀐 판매율", enHelp: "Of those, the rates that were new or different in Workbench" },
+  { key: "unknownSkuCount", ko: "Workbench에 없는 SKU", en: "Not in Workbench", koHelp: "Workbench 마스터 상품에 없어서 보내지 않은 SKU", enHelp: "No master product in Workbench; not sent" },
+  { key: "draftSkuCount", ko: "Draft 상품 SKU", en: "Draft in Workbench", koHelp: "Workbench에서 아직 Draft라 보내지 않은 SKU. 활성화하면 다음 Sync 때 반영됩니다.", enHelp: "Still a draft in Workbench; not sent. Activate it and the next Sync applies it." },
+  { key: "failed", ko: "실패", en: "Failed", koHelp: "다른 이유로 저장되지 않은 판매율", enHelp: "Rates not saved for another reason" },
+] as const;
+
+function salesRateStatusText(status: unknown, pick: Pick): { label: string; help: string; tone: string } {
+  const base = pushStatusText(status, pick);
+  switch (status) {
+    case "succeeded":
+      return { ...base, help: pick("Workbench가 받을 수 있는 판매율을 모두 저장했습니다.", "Every rate Workbench could take was saved.") };
+    case "partial":
+      return { ...base, help: pick("일부 판매율이 저장되지 않았습니다. 나머지는 정상 반영됐습니다.", "Some rates were not saved; the rest were applied.") };
+    case "failed":
+      return { ...base, help: pick("Workbench에 저장된 판매율이 없습니다.", "No rate was saved in Workbench.") };
+    default:
+      return { ...base, help: pick("이번 Sync에서는 판매율을 Workbench로 보내지 않았습니다.", "This Sync did not push sales rates to Workbench.") };
+  }
+}
+
+/** The sales rate push: each active SKU's T.Avg current, sent after a successful refresh. */
+function WorkbenchSalesRateDetails({ push, pick }: { push: Result; pick: Pick }) {
+  const status = salesRateStatusText(push.status, pick);
+  const notSentSkus = strings(push.notSentSkus);
+  const notSentCount = (num(push.unknownSkuCount) ?? 0) + (num(push.draftSkuCount) ?? 0);
+  const errors = strings(push.errors);
+  const reason = typeof push.reason === "string" ? push.reason : null;
+  const durationMs = num(push.durationMs);
+
+  return (
+    <Section title={pick("Workbench 판매율 전송", "Workbench sales rate push")}>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className={`inline-flex rounded-full border px-2 py-0.5 font-semibold ${status.tone}`}>{status.label}</span>
+        {typeof push.target === "string" ? <span className="font-mono text-muted-foreground">{push.target}</span> : null}
+        {durationMs !== null ? <span className="text-muted-foreground">· {(durationMs / 1000).toFixed(1)}{pick("초", "s")}</span> : null}
+      </div>
+      <p className="mt-1.5 leading-5 text-muted-foreground">{status.help}</p>
+      {reason ? (
+        <p className="mt-1.5 leading-5 text-[#57534e]">
+          {reason.includes("is not set")
+            ? pick("Workbench 설정(WORKBENCH_API_URL / WORKBENCH_API_KEY)이 없어 건너뛰었습니다.", "Skipped: WORKBENCH_API_URL / WORKBENCH_API_KEY is not set.")
+            : reason}
+        </p>
+      ) : null}
+
+      {push.status !== "skipped" ? (
+        <dl className="mt-2">
+          {SALES_RATE_COUNT_FIELDS.map((field) => {
+            const value = num(push[field.key]);
+            return value === null ? null : (
+              <FieldRow key={field.key} label={pick(field.ko, field.en)} value={value.toLocaleString()} help={pick(field.koHelp, field.enHelp)} />
+            );
+          })}
+        </dl>
+      ) : null}
+
+      {notSentSkus.length > 0 ? (
+        <div className="mt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-semibold text-[#1a1917]">
+              {pick(`보내지 않은 SKU ${notSentCount.toLocaleString()}개`, `${notSentCount.toLocaleString()} SKUs not sent`)}
+            </div>
+            <CopyButton text={notSentSkus.join("\n")} pick={pick} />
+          </div>
+          {notSentCount > notSentSkus.length ? (
+            <p className="mt-1 leading-5 text-muted-foreground">
+              {pick(`앞의 ${notSentSkus.length.toLocaleString()}개만 저장했습니다.`, `Only the first ${notSentSkus.length.toLocaleString()} are stored.`)}
+            </p>
+          ) : null}
+          <pre className="mt-2 max-h-48 overflow-auto rounded border bg-white p-2 font-mono leading-5">{notSentSkus.join("\n")}</pre>
+        </div>
+      ) : null}
+
+      {errors.length > 0 ? (
+        <ul className="mt-3 space-y-1 text-red-800">
+          {errors.map((error) => <li key={error} className="break-words">{error}</li>)}
+        </ul>
+      ) : null}
+    </Section>
+  );
+}
+
 export function SyncResultDetails({ result, pick }: { result: Result; pick: Pick }) {
   const statsRows = STATS_FIELDS.flatMap((field) => {
     const value = num(result[field.key]);
@@ -288,6 +373,9 @@ export function SyncResultDetails({ result, pick }: { result: Result; pick: Pick
   });
   const stale = result.velocitySnapshotStale;
   const push = result.workbench && typeof result.workbench === "object" ? (result.workbench as Result) : null;
+  const salesRatePush = result.workbenchSalesRates && typeof result.workbenchSalesRates === "object"
+    ? (result.workbenchSalesRates as Result)
+    : null;
 
   return (
     <div className="grid gap-3">
@@ -311,6 +399,7 @@ export function SyncResultDetails({ result, pick }: { result: Result; pick: Pick
       ) : null}
 
       {push ? <WorkbenchPushDetails push={push} pick={pick} /> : null}
+      {salesRatePush ? <WorkbenchSalesRateDetails push={salesRatePush} pick={pick} /> : null}
 
       <details className="rounded-md border bg-white p-3">
         <summary className="cursor-pointer font-semibold text-muted-foreground">{pick("원본 JSON", "Raw JSON")}</summary>

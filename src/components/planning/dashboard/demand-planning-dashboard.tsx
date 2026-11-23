@@ -88,7 +88,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
-import { workbenchPushNotice } from "@/features/planning/workbench-push-notice";
+import { workbenchPushNotice, workbenchSalesRateNotice } from "@/features/planning/workbench-push-notice";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import { ScenarioApi } from "@/features/planning/scenarios";
 import { projectRowsForScenario } from "@/features/planning/scenario-projection";
@@ -960,6 +960,7 @@ function SyncConfirmationDialog({
               <li>{pick("Link/Custom 판매 통계와 일평균 판매량을 다시 계산", "Recalculate Link/Custom sales statistics and daily averages")}</li>
               <li>{pick("누락된 Master SKU를 보완하고 화면 캐시를 갱신", "Backfill missing Master SKUs and refresh dashboard caches")}</li>
               <li>{pick("Container 정보를 Workbench System으로 동기화", "Sync Container information to the Workbench System")}</li>
+              <li>{pick("활성 SKU의 일평균 판매량(T.Avg 현재)을 Workbench System으로 전송", "Send each active SKU's daily sales rate (T.Avg current) to the Workbench System")}</li>
             </ul>
           </div>
 
@@ -1022,18 +1023,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     loadContainerDetails,
   } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, INCLUDE_DRAFT_CONTAINERS, categoryFilter, salesWindowWeights, oosLostDemandWeights);
 
-  // Each finished Sync reports its container push to Workbench once. The ref
-  // keeps a language switch (a new `pick`) from showing the same Sync again.
+  // Each finished Sync reports its container push and its sales rate push to
+  // Workbench once each. The ref keeps a language switch (a new `pick`) from
+  // showing the same Sync again.
   const shownSyncSeqRef = useRef(0);
   useEffect(() => {
     if (!syncOutcome || syncOutcome.seq === shownSyncSeqRef.current) return;
     shownSyncSeqRef.current = syncOutcome.seq;
-    const notice = workbenchPushNotice(syncOutcome.result?.workbench, pick);
-    if (!notice) return;
-    toast[notice.level](notice.message, {
-      description: notice.description,
-      duration: notice.level === "success" || notice.level === "info" ? 6_000 : 12_000,
-    });
+    const notices = [
+      workbenchPushNotice(syncOutcome.result?.workbench, pick),
+      workbenchSalesRateNotice(syncOutcome.result?.workbenchSalesRates, pick),
+    ];
+    for (const notice of notices) {
+      if (!notice) continue;
+      toast[notice.level](notice.message, {
+        description: notice.description,
+        duration: notice.level === "success" || notice.level === "info" ? 6_000 : 12_000,
+      });
+    }
   }, [syncOutcome, pick]);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);

@@ -310,7 +310,7 @@ function errorText(error: unknown): string {
  * Every master product SKU Workbench has, lowercased; null when the catalogue
  * is larger than we are willing to page through.
  */
-async function loadCatalogueSkus(config: WorkbenchConfig, requestId: string | null): Promise<Set<string> | null> {
+export async function loadCatalogueSkus(config: WorkbenchConfig, requestId: string | null): Promise<Set<string> | null> {
   const skus = new Set<string>();
   for (let page = 1; page <= MAX_CATALOGUE_PAGES; page += 1) {
     const { data, meta } = await workbenchRequest<{ sku: string }[]>(config, "GET", "/api/v1/master-products", {
