@@ -324,6 +324,10 @@ describe("DemandPlanningRepository.getSalesVelocity", () => {
     expect(avgSql).not.toContain("order_type = 'ttm_preorder'");
     expect(sql).toContain("/ 90 * 0.15");
     expect(sql).toContain("/ 60 * 0.20");
+    // West and East were weighted 10 / 15 / 30 / 20 / 15 (90% in all) while FBA
+    // had 15 / 20: every average now uses FBA's weights.
+    expect(sql).not.toContain("/ 90 * 0.10");
+    expect(sql).not.toContain("/ 60 * 0.15");
     expect(sql).not.toContain(`channel IN (${FBA_CHANNELS_SQL}) AND order_date`);
   });
 });
