@@ -1018,6 +1018,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     error: loadError,
     syncOutcome,
     reload,
+    refetch,
     loadContainerDetails,
   } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, INCLUDE_DRAFT_CONTAINERS, categoryFilter, salesWindowWeights, oosLostDemandWeights);
 
@@ -2133,13 +2134,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         `Live에 ${result.applied}건을 반영했습니다.`,
         `Applied ${result.applied} change${result.applied === 1 ? "" : "s"} to Live.`,
       ));
-      reload();
+      // Re-read, not Sync. The quantities and ETAs are already in the tables
+      // the dashboard reads, and the Sync after each apply took five minutes
+      // to change nothing more. Workbench gets them on the next Sync.
+      refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : pick("반영하지 못했습니다.", "Could not apply to Live."));
     } finally {
       setScenarioBusy(false);
     }
-  }, [applyDialog, pick, reload, canCreateDemandPlanning]);
+  }, [applyDialog, pick, refetch, canCreateDemandPlanning]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;

@@ -29,6 +29,8 @@ export interface DemandPlanningDataState {
   error: string | null;
   syncOutcome: SyncOutcome | null;
   reload: (settings?: RefreshSettings) => void;
+  /** Reads the dashboard again without running the Sync. */
+  refetch: () => void;
   loadContainerDetails: () => void;
 }
 
@@ -160,6 +162,14 @@ export function useDemandPlanningData(
     fetchDashboard(true, settings);
   }, [fetchDashboard]);
 
+  /** Reads the dashboard again without running the Sync. For a change that is
+   *  already in the tables the dashboard reads (container quantities, ETAs),
+   *  where the Sync's several minutes buy nothing. */
+  const refetch = useCallback(() => {
+    if (syncInFlightRef.current) return;
+    fetchDashboard(false);
+  }, [fetchDashboard]);
+
   const loadContainerDetails = useCallback(() => {
     if (!ready || ready.scope !== scope || dataScopeRef.current !== scope
       || detailsLoadedRef.current || detailLane.current.isPending()) return;
@@ -197,5 +207,5 @@ export function useDemandPlanningData(
     })();
   }, [ready, scope]);
 
-  return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, syncOutcome, reload, loadContainerDetails };
+  return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, syncOutcome, reload, refetch, loadContainerDetails };
 }
