@@ -14,7 +14,8 @@ export async function GET(req: Request) {
     const categoryCodes = [...new Set(categoryParam.split(",").map(token => token.trim()))]
       .filter((token): token is DashboardCategoryCode => VALID_CATEGORY_CODES.has(token as DashboardCategoryCode));
     const { data, cacheStatus } = await DemandPlanningService.getContainerDetails({
-      mode: searchParams.get("mode") === "custom" ? "custom" : "link",
+      // Custom unless ?mode=link, same default as the dashboard route.
+      mode: searchParams.get("mode") === "link" ? "link" : "custom",
       includeDrafts: searchParams.get("includeDrafts") === "1",
       categoryCodes: categoryCodes.length ? categoryCodes : null,
       asOf: searchParams.get("asOf"),
