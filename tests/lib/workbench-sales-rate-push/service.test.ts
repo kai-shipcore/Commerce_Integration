@@ -133,7 +133,7 @@ describe("WorkbenchSalesRatePushService.push", () => {
     const result = await WorkbenchSalesRatePushService.push({ requestId: "job-1", salesWindowWeights: weights });
 
     expect(getDashboardDataMock).toHaveBeenCalledWith({
-      mode: "link",
+      mode: "custom",
       includeContainers: false,
       rawContainers: false,
       includeDrafts: false,

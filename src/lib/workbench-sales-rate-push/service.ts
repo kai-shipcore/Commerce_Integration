@@ -154,10 +154,15 @@ async function importWithRetry(config: WorkbenchConfig, products: WorkbenchSales
   }
 }
 
-/** The dashboard's T.Avg current for every active SKU, each from its own category's velocity lane. */
+/**
+ * The dashboard's T.Avg current for every active SKU, on Custom sales: the
+ * source the dashboard opens on. It read Link until 2026-11-23, so a Seat Cover
+ * was sent at a rate the page did not show (CA-SC-10-F-10-BK-1TO: 20.78 sent,
+ * 20.50 on screen).
+ */
 async function readSalesRates(salesWindowWeights: unknown): Promise<WorkbenchSalesRate[]> {
   const { data } = await DemandPlanningService.getDashboardData({
-    mode: "link",
+    mode: "custom",
     includeContainers: false,
     rawContainers: false,
     includeDrafts: false,
