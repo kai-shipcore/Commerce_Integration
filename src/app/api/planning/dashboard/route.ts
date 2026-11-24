@@ -29,7 +29,10 @@ export async function GET(req: Request) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const mode = searchParams.get("mode") === "custom" ? "custom" as const : "link" as const;
+    // Custom is the default, as on the dashboard itself: a call without ?mode=
+    // used to answer with Link figures, which differ from what the page shows
+    // (CA-SC-10-F-10-BK-1TO, 2026-11-23: T.Avg 20.78 Link vs 20.50 Custom).
+    const mode = searchParams.get("mode") === "link" ? "link" as const : "custom" as const;
     const includeContainers = searchParams.get("includeContainers") === "1";
     const rawContainers = includeContainers && searchParams.get("rawContainers") === "1";
     const includeDrafts = searchParams.get("includeDrafts") === "1";

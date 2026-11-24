@@ -53,10 +53,11 @@ const PORT_NAME = "Los Angeles / Long Beach";
  */
 const FALLBACK_WAREHOUSE_TIME_ZONE = "America/Los_Angeles";
 
-// Workbench's own bounds are 50 containers and 500 items per container. The
+// A request carries at most 25 containers (50 until 2026-11-23) and Workbench
+// takes at most 500 items per container. The
 // per-request item cap is ours: it keeps one request well inside Workbench's
 // 20-second transaction and 4 MB body limit.
-const MAX_CONTAINERS_PER_REQUEST = 50;
+const MAX_CONTAINERS_PER_REQUEST = 25;
 const MAX_ITEMS_PER_CONTAINER = 500;
 const MAX_ITEMS_PER_REQUEST = 5_000;
 const MAX_RECORDED_ERRORS = 20;
@@ -231,7 +232,7 @@ export function prepareContainer(
   };
 }
 
-/** Splits into requests of at most 50 containers and 5,000 items. */
+/** Splits into requests of at most 25 containers and 5,000 items. */
 export function chunkContainers(containers: WorkbenchImportContainer[]): WorkbenchImportContainer[][] {
   const chunks: WorkbenchImportContainer[][] = [];
   let current: WorkbenchImportContainer[] = [];

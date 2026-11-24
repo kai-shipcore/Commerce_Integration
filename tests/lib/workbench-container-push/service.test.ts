@@ -222,9 +222,9 @@ describe("chunkContainers", () => {
     items: Array.from({ length: items }, (_, index) => ({ sku: `S${index}`, loadedQuantity: 1 })),
   });
 
-  it("keeps each request within 50 containers", () => {
-    const chunks = chunkContainers(Array.from({ length: 101 }, () => container(1)));
-    expect(chunks.map((chunk) => chunk.length)).toEqual([50, 50, 1]);
+  it("keeps each request within 25 containers", () => {
+    const chunks = chunkContainers(Array.from({ length: 51 }, () => container(1)));
+    expect(chunks.map((chunk) => chunk.length)).toEqual([25, 25, 1]);
   });
 
   it("keeps each request within 5,000 items", () => {
