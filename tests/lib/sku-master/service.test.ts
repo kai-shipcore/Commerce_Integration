@@ -171,6 +171,22 @@ describe("SkuMasterService.updateProduct", () => {
     ).rejects.toThrow("Invalid originalOrCustom");
   });
 
+  it("reads a named null salesStatus as In Production, and a missing one as no change", async () => {
+    repositoryMock.updateProduct.mockResolvedValue(true);
+
+    await SkuMasterService.updateProduct({ masterSku: "SKU-1", salesStatus: null } as never, null);
+    expect(repositoryMock.updateProduct).toHaveBeenLastCalledWith(
+      "SKU-1",
+      expect.objectContaining({ salesStatus: null, salesStatusSpecified: true })
+    );
+
+    await SkuMasterService.updateProduct({ masterSku: "SKU-1", moq: 5 } as never, null);
+    expect(repositoryMock.updateProduct).toHaveBeenLastCalledWith(
+      "SKU-1",
+      expect.objectContaining({ salesStatus: undefined, salesStatusSpecified: false })
+    );
+  });
+
   it("passes an Original/Custom override to the repository", async () => {
     repositoryMock.updateProduct.mockResolvedValue(true);
 

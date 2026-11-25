@@ -75,6 +75,9 @@ export interface UpdateProductFields {
   weightKg: number | null;
   status: "active" | "inactive" | null;
   salesStatus: string | null | undefined;
+  /** True when the request named salesStatus at all: a null then means "back
+   *  to In Production", not "leave it". */
+  salesStatusSpecified: boolean;
   floorMatType: FloorMatType | null | undefined;
   floorMatTypeSpecified: boolean;
   salesTypeOverride: "Original" | "Custom" | null | undefined;
@@ -522,7 +525,16 @@ export const SkuMasterRepository = {
            case_qty = COALESCE($5, case_qty),
            weight_kg = COALESCE($6, weight_kg),
            status = COALESCE($7::shipcore.fc_product_status, status),
-           sales_status = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE sales_status END,
+           -- A null with the field named clears the override (back to In
+           -- Production). It used to mean "leave it", so a Hold could be
+           -- changed to another override but never removed. Only an override
+           -- is cleared: the page shows 'SWC' as no override too, and saving
+           -- any other field of that row must not blank it.
+           sales_status = CASE
+             WHEN $8::text IS NOT NULL THEN $8::text
+             WHEN $12::boolean AND sales_status IN (${OVERRIDE_STATUS_SQL_LIST}) THEN NULL
+             ELSE sales_status
+           END,
            floor_mat_type = CASE WHEN $10::boolean THEN $9::text ELSE floor_mat_type END,
            sales_type_override = CASE WHEN $11::text IS NOT NULL THEN $11::text ELSE sales_type_override END,
            updated_at = NOW()
@@ -540,6 +552,7 @@ export const SkuMasterRepository = {
         fields.floorMatType ?? null,
         fields.floorMatTypeSpecified,
         fields.salesTypeOverride ?? null,
+        fields.salesStatusSpecified,
       ]
     );
     return (result.rowCount ?? 0) > 0;

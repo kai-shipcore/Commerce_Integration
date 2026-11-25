@@ -132,7 +132,7 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns false when no row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 0 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: undefined,
+      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesStatusSpecified: false, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: undefined,
     });
     expect(found).toBe(false);
   });
@@ -140,11 +140,22 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns true when a row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 1 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: "Custom",
+      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesStatusSpecified: false, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: "Custom",
     });
     expect(found).toBe(true);
     expect(poolQueryMock.mock.calls[0][0]).toContain("sales_type_override");
     expect(poolQueryMock.mock.calls[0][1][10]).toBe("Custom");
+  });
+
+  it("clears an override only when salesStatus was named, and never a non-override value", async () => {
+    poolQueryMock.mockResolvedValue({ rowCount: 1 });
+    await SkuMasterRepository.updateProduct("SKU-1", {
+      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: null, salesStatusSpecified: true, floorMatType: undefined, floorMatTypeSpecified: false, salesTypeOverride: undefined,
+    });
+    const [sql, params] = poolQueryMock.mock.calls[0];
+    expect(sql).toContain("WHEN $12::boolean AND sales_status IN ('Hold', 'Discontinued', 'TBD') THEN NULL");
+    expect(params[7]).toBeNull();
+    expect(params[11]).toBe(true);
   });
 });
 

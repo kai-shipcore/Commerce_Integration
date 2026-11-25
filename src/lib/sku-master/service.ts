@@ -234,8 +234,11 @@ export const SkuMasterService = {
     const cbmPerUnit = input.cbmPerUnit == null ? null : Math.max(0.000001, Number(input.cbmPerUnit));
     const weightKg = input.weightKg == null ? null : Math.max(0, Number(input.weightKg));
     const statusValue = input.status == null ? null : String(input.status).trim().toLowerCase();
-    const salesStatusRaw = input.salesStatus == null ? undefined : String(input.salesStatus).trim();
-    const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
+    // Named with null or "" is "In Production": the override is cleared. Only
+    // a request that leaves the field out keeps the stored one.
+    const salesStatusSpecified = Object.prototype.hasOwnProperty.call(input, "salesStatus");
+    const salesStatusRaw = input.salesStatus == null ? "" : String(input.salesStatus).trim();
+    const salesStatusValue = salesStatusSpecified ? (salesStatusRaw === "" ? null : salesStatusRaw) : undefined;
     const floorMatTypeSpecified = Object.prototype.hasOwnProperty.call(input, "floorMatType");
     const floorMatTypeRaw = input.floorMatType == null ? null : String(input.floorMatType).trim();
     const floorMatTypeValue = floorMatTypeSpecified
@@ -293,6 +296,7 @@ export const SkuMasterService = {
       weightKg,
       status: statusValue as "active" | "inactive" | null,
       salesStatus: salesStatusValue,
+      salesStatusSpecified,
       floorMatType: floorMatTypeValue as FloorMatType | null | undefined,
       floorMatTypeSpecified,
       salesTypeOverride: salesTypeOverride as "Original" | "Custom" | null | undefined,
