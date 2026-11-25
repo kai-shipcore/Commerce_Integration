@@ -210,9 +210,14 @@ type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
  *  Sheets-style "Sort by color" — a one-off partition (rows whose cell in
  *  this column matches `color` first, everything else after, each half
  *  keeping its prior relative order) rather than a persistent value order. */
-/** The four ways to read the two sales types apart, in menu order. Each label
- *  reads as the resulting layout: the block named first sits on top. */
+/** The ways to read the two sales types apart, in menu order: both blocks in
+ *  the same direction first, then the mirrored ones. Each label reads as the
+ *  resulting layout: the block named first sits on top. */
 const SALES_GROUP_SORT_CHOICES: { order: SalesGroupSortOrder; ko: string; en: string }[] = [
+  { order: { first: "Original", originalDir: "asc", customDir: "asc" }, ko: "Original ↑ · Custom ↑", en: "Original ↑ · Custom ↑" },
+  { order: { first: "Original", originalDir: "desc", customDir: "desc" }, ko: "Original ↓ · Custom ↓", en: "Original ↓ · Custom ↓" },
+  { order: { first: "Custom", originalDir: "asc", customDir: "asc" }, ko: "Custom ↑ · Original ↑", en: "Custom ↑ · Original ↑" },
+  { order: { first: "Custom", originalDir: "desc", customDir: "desc" }, ko: "Custom ↓ · Original ↓", en: "Custom ↓ · Original ↓" },
   { order: { first: "Original", originalDir: "asc", customDir: "desc" }, ko: "Original ↑ · Custom ↓", en: "Original ↑ · Custom ↓" },
   { order: { first: "Original", originalDir: "desc", customDir: "asc" }, ko: "Original ↓ · Custom ↑", en: "Original ↓ · Custom ↑" },
   { order: { first: "Custom", originalDir: "desc", customDir: "asc" }, ko: "Custom ↑ · Original ↓", en: "Custom ↑ · Original ↓" },
